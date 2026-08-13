@@ -34,6 +34,8 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
   const leadY = 235 + Math.sin(scenarioElapsed / 5) * 8
   const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${hasIntersection ? `${intersectionStage}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
   const laneName = lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'
+  const laneCameraTransform = `matrix(1, 0, ${-lane * 1.04}, 1, ${lane * 258}, 0)`
+  const steeringAngle = recentAction === 'lane-left' ? -14 : recentAction === 'lane-right' ? 14 : 0
   const feedbackLabel = recentAction === 'signal-left'
     ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
     : recentAction === 'signal-right'
@@ -60,7 +62,6 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           </linearGradient>
         </defs>
 
-        <g className={reducedMotion ? 'road-world' : 'road-world road-world-animated'} style={{ transform: `translateX(${-lane * 90}px)` }}>
         <rect x="-120" width="1200" height="540" fill="url(#sky)" />
         <path d="M0 252 H960 V340 L0 324Z" fill={isFreeway ? '#678a56' : '#779861'} />
         {!isFreeway && (
@@ -82,6 +83,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           </g>
         )}
 
+        <g className={reducedMotion ? 'road-world' : 'road-world road-world-animated'} data-testid="lane-camera" style={{ transform: laneCameraTransform }}>
         <path d="M365 248 L595 248 L960 540 L0 540Z" fill="url(#road)" />
         <path d="M365 248 L0 540" stroke="#f4f1df" strokeWidth="8" />
         <path d="M595 248 L960 540" stroke="#f4f1df" strokeWidth="8" />
@@ -122,9 +124,10 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
             </g>
           </g>
         )}
+        </g>
 
         {(scenario.type === 'slow-lead' || scenario.type === 'freeway-merge') && (
-          <g transform={`translate(${lane * -22} ${leadY})`} aria-hidden="true">
+          <g transform={`translate(0 ${leadY})`} aria-hidden="true">
             <path d="M430 0 h100 l22 48 H408Z" fill="#26333f" />
             <rect x="423" y="15" width="114" height="46" rx="10" fill="#b9c5cc" stroke="#18232b" strokeWidth="4" />
             <rect x="438" y="23" width="34" height="21" fill="#75a0ba" />
@@ -135,7 +138,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         )}
 
         {scenario.trafficLight && (
-          <g aria-hidden="true" transform={`translate(${548 + approachProgress * 86} ${85 + approachProgress * 48}) scale(${0.7 + approachProgress * 0.5})`}>
+          <g aria-hidden="true" transform={`translate(${548 + approachProgress * 86 - lane * (18 + approachProgress * 55)} ${85 + approachProgress * 48}) scale(${0.7 + approachProgress * 0.5})`}>
             <rect x="28" y="7" width="10" height="164" fill="#333b40" />
             <rect width="66" height="116" rx="9" fill="#22292e" />
             {(['red', 'yellow', 'green'] as const).map((colour, index) => (
@@ -149,9 +152,8 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
             ))}
           </g>
         )}
-        </g>
 
-        <g transform={`rotate(${lane * 12} 480 489)`}>
+        <g className={reducedMotion ? 'steering-wheel' : 'steering-wheel steering-wheel-animated'} style={{ transform: `rotate(${steeringAngle}deg)` }}>
         <path d="M172 540 C240 422 335 386 480 386 C625 386 720 422 788 540Z" fill="#172129" />
         <path d="M338 540 C355 459 398 423 480 423 C562 423 605 459 622 540Z" fill="#0b1014" stroke="#34444e" strokeWidth="8" />
         <circle cx="480" cy="489" r="43" fill="#25333d" stroke="#52636d" strokeWidth="9" />
