@@ -38,6 +38,19 @@ describe('deterministic engine', () => {
     expect(state.speedKph).toBeCloseTo(reducedSpeed)
   })
 
+  it('advances scenario distance only when the vehicle moves', () => {
+    let state = createEngine(12, 'practice')
+    state = advanceEngine(state, 5)
+    expect(state.scenarioDistanceMeters).toBe(0)
+
+    state = advanceEngine(state, 1, new Set(['accelerate'] as const))
+    const movingDistance = state.scenarioDistanceMeters
+    expect(movingDistance).toBeGreaterThan(0)
+
+    state = advanceEngine(state, 1)
+    expect(state.scenarioDistanceMeters).toBeGreaterThan(movingDistance)
+  })
+
   it('pauses on a dangerous finding and preserves it after continue', () => {
     let state = createEngine(11)
     state = advanceEngine(state, state.route[0].durationSeconds)

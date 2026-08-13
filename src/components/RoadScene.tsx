@@ -7,6 +7,7 @@ type Props = {
   signal: 'left' | 'right' | null
   recentAction: ActionType | null
   scenarioElapsed: number
+  scenarioDistanceMeters: number
   reducedMotion: boolean
 }
 
@@ -17,12 +18,12 @@ const feedbackLabels: Partial<Record<ActionType, string>> = {
   'shoulder-right': 'Right shoulder checked',
 }
 
-export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, reducedMotion }: Props) {
+export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, scenarioDistanceMeters, reducedMotion }: Props) {
   const phase = reducedMotion ? 0 : (scenarioElapsed * Math.max(speedKph, 8)) % 120
   const isFreeway = scenario.environment === 'freeway'
   const hasIntersection = ['right-on-red', 'yellow-light', 'multilane-left'].includes(scenario.type)
   const approachProgress = hasIntersection
-    ? Math.min(0.9, scenarioElapsed / (scenario.durationSeconds * 0.75))
+    ? Math.min(0.9, scenarioDistanceMeters / 280)
     : 0
   const intersectionY = 260 + approachProgress * 160
   const intersectionHeight = 22 + approachProgress * 84
@@ -30,6 +31,12 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
   const roadPerspective = Math.max(0, (stopLineY - 248) / 292)
   const stopLineLeft = 365 - roadPerspective * 365
   const stopLineRight = 595 + roadPerspective * 365
+  const farRoadPerspective = Math.max(0, (intersectionY - intersectionHeight / 2 - 248) / 292)
+  const nearRoadPerspective = Math.max(0, (intersectionY + intersectionHeight / 2 - 248) / 292)
+  const farRoadLeft = 365 - farRoadPerspective * 365
+  const farRoadRight = 595 + farRoadPerspective * 365
+  const nearRoadLeft = 365 - nearRoadPerspective * 365
+  const nearRoadRight = 595 + nearRoadPerspective * 365
   const intersectionStage = approachProgress >= 0.72 ? 'Decision zone' : approachProgress >= 0.32 ? 'Intersection approaching' : 'Intersection ahead'
   const leadY = 235 + Math.sin(scenarioElapsed / 5) * 8
   const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${hasIntersection ? `${intersectionStage}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
@@ -109,8 +116,8 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         {hasIntersection && (
           <g data-testid="approaching-intersection" data-approach={approachProgress.toFixed(2)} aria-hidden="true">
             <rect x="-120" y={intersectionY - intersectionHeight / 2} width="1200" height={intersectionHeight} fill="#343c41" />
-            <line x1="-120" y1={intersectionY - intersectionHeight / 2} x2="1080" y2={intersectionY - intersectionHeight / 2} stroke="#eee9d8" strokeWidth={4 + approachProgress * 5} />
-            <line x1="-120" y1={intersectionY + intersectionHeight / 2} x2="1080" y2={intersectionY + intersectionHeight / 2} stroke="#eee9d8" strokeWidth={4 + approachProgress * 5} />
+            <path d={`M-120 ${intersectionY - intersectionHeight / 2} H${farRoadLeft} M${farRoadRight} ${intersectionY - intersectionHeight / 2} H1080`} stroke="#d9d2bf" strokeWidth={4 + approachProgress * 5} />
+            <path d={`M-120 ${intersectionY + intersectionHeight / 2} H${nearRoadLeft} M${nearRoadRight} ${intersectionY + intersectionHeight / 2} H1080`} stroke="#d9d2bf" strokeWidth={4 + approachProgress * 5} />
             {[0.18, 0.34, 0.5, 0.66, 0.82].map((position) => {
               const stripeX = stopLineLeft + (stopLineRight - stopLineLeft) * position
               const stripeWidth = Math.max(3, (stopLineRight - stopLineLeft) * 0.075)

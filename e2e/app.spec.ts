@@ -55,7 +55,7 @@ test('holds speed after the keyboard accelerator is released', async ({ page }) 
   await expect(page.locator('.speed-readout strong')).toHaveText(String(speedAfterRelease))
 })
 
-test('visibly approaches the instructed urban intersection', async ({ page }) => {
+test('approaches the instructed intersection only while the vehicle moves', async ({ page }) => {
   await page.goto('?seed=43')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
@@ -64,10 +64,17 @@ test('visibly approaches the instructed urban intersection', async ({ page }) =>
   const intersection = page.getByTestId('approaching-intersection')
   await expect(intersection).toBeVisible()
   const initialApproach = Number(await intersection.getAttribute('data-approach'))
-  await page.waitForTimeout(1200)
+  await page.waitForTimeout(600)
+  const stoppedApproach = Number(await intersection.getAttribute('data-approach'))
+  expect(stoppedApproach).toBe(initialApproach)
+
+  await page.keyboard.down('ArrowUp')
+  await page.waitForTimeout(1000)
+  await page.keyboard.up('ArrowUp')
+  await page.waitForTimeout(400)
   const laterApproach = Number(await intersection.getAttribute('data-approach'))
 
-  expect(laterApproach).toBeGreaterThan(initialApproach)
+  expect(laterApproach).toBeGreaterThan(stoppedApproach)
   await expect(page.getByText(/Intersection ahead|Intersection approaching|Decision zone/)).toBeVisible()
 })
 

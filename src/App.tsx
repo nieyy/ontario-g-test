@@ -201,7 +201,9 @@ type PlayerProps = {
 }
 
 function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLockConflict }: PlayerProps) {
-  const [engine, setEngine] = useState<EngineState>(() => checkpoint?.state ?? createEngine(seedFromUrl(), practiceType ? 'practice' : 'exam', practiceType))
+  const [engine, setEngine] = useState<EngineState>(() => checkpoint
+    ? { ...checkpoint.state, scenarioDistanceMeters: checkpoint.state.scenarioDistanceMeters ?? 0 }
+    : createEngine(seedFromUrl(), practiceType ? 'practice' : 'exam', practiceType))
   const [manualPaused, setManualPaused] = useState(false)
   const [recentAction, setRecentAction] = useState<ActionType | null>(null)
   const controls = useRef(new Set<ActionType>())
@@ -326,7 +328,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
-          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} reducedMotion={preferences.reducedMotion} />
+          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} reducedMotion={preferences.reducedMotion} />
           <button className="lane-target lane-target-left" disabled={engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
           <button className="lane-target lane-target-right" disabled={engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
           <div className="examiner-card" aria-live="polite">

@@ -17,6 +17,7 @@ export type EngineState = {
   route: ScenarioVariant[]
   scenarioIndex: number
   scenarioElapsed: number
+  scenarioDistanceMeters: number
   elapsed: number
   speedKph: number
   lane: -1 | 0 | 1
@@ -56,6 +57,7 @@ export function createEngine(seed: number, stage: RunStage = 'exam', onlyType?: 
     route: buildRoute(seed, onlyType),
     scenarioIndex: 0,
     scenarioElapsed: 0,
+    scenarioDistanceMeters: 0,
     elapsed: 0,
     speedKph: 0,
     lane: 0,
@@ -195,11 +197,14 @@ export function advanceEngine(
   // speed so attention can stay on observation and decision practice.
   const nextSpeed = Math.max(0, Math.min(120, state.speedKph + (acceleration - braking) * seconds))
   const nextElapsed = state.scenarioElapsed + seconds
+  const currentDistance = state.scenarioDistanceMeters ?? 0
+  const nextDistance = currentDistance + ((state.speedKph + nextSpeed) / 2 / 3.6) * seconds
   const updated: EngineState = {
     ...state,
     speedKph: nextSpeed,
     elapsed: state.elapsed + seconds,
     scenarioElapsed: nextElapsed,
+    scenarioDistanceMeters: nextDistance,
   }
 
   if (nextElapsed + 1e-9 < scenario.durationSeconds) return updated
@@ -213,6 +218,7 @@ export function advanceEngine(
     findings: [...state.findings, ...findings],
     scenarioIndex: isFinal ? state.scenarioIndex : state.scenarioIndex + 1,
     scenarioElapsed: 0,
+    scenarioDistanceMeters: 0,
     scenarioActions: [],
     // Each authored vignette begins with the vehicle centred in its own
     // three-lane road model. Carrying a lane edge into the next vignette can
