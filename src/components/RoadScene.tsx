@@ -124,22 +124,14 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         <circle cx="480" cy="489" r="43" fill="#25333d" stroke="#52636d" strokeWidth="9" />
         </g>
 
-        <g transform="translate(36 438)">
-          <rect width="176" height="68" rx="12" fill="#10202bd9" />
-          <text x="18" y="26" fill="#a9c0ce" fontSize="14">SPEED</text>
-          <text x="18" y="55" fill="white" fontSize="31" fontWeight="800">{Math.round(speedKph)}</text>
-          <text x="82" y="55" fill="#c8d5dc" fontSize="16">km/h</text>
-          <text x="140" y="42" fill="#c8d5dc" fontSize="13">LIMIT</text>
-          <text x="146" y="60" fill="white" fontSize="17" fontWeight="700">{scenario.speedLimitKph}</text>
-        </g>
         {signal && (
           <g transform={signal === 'left' ? 'translate(245 468)' : 'translate(675 468)'}>
             <path d={signal === 'left' ? 'M40 0 L0 22 L40 44 V31 H74 V13 H40Z' : 'M34 0 L74 22 L34 44 V31 H0 V13 H34Z'} fill="#62d584" />
           </g>
         )}
       </svg>
-      <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><span /></div>
-      <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><span /></div>
+      <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>LEFT MIRROR</b><span /></div>
+      <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>RIGHT MIRROR</b><span /></div>
       <div className="lane-indicator" aria-label="Current lane" aria-live="polite">Lane: <strong>{lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'}</strong></div>
       {recentAction && feedbackLabel && (
         <div className={`action-feedback feedback-${recentAction}`} role="status">

@@ -306,37 +306,54 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
 
   const totalDuration = engine.route.reduce((sum, item) => sum + item.durationSeconds, 0)
   const remaining = totalDuration - engine.elapsed
-  const instructionVisible = engine.scenarioElapsed < 14
   const checklist = new Set(engine.scenarioActions.map((action) => action.type))
+  const keyLabel = (action: ActionType) => preferences.keyBindings.find((binding) => binding.action === action)?.label ?? '—'
+  const controlClass = (action: ActionType, active = false) => [
+    'control-tile',
+    checklist.has(action) ? 'used' : '',
+    recentAction === action ? 'recent-control' : '',
+    active ? 'active-control' : '',
+  ].filter(Boolean).join(' ')
 
   return (
     <main id="main-content" className="player-shell">
       <header className="player-header">
-        <div><span className="brand-mark small">G</span><strong>{practiceType ? 'Focused practice' : 'Newmarket exam practice'}</strong></div>
-        <div className="player-status"><span>Scene {engine.scenarioIndex + 1}/{engine.route.length}</span><span>{formatTime(remaining)}</span><button onClick={() => setManualPaused(true)}>Pause</button></div>
+        <div><span className="brand-mark small">G</span><strong>G TEST PRACTICE</strong></div>
+        <div className="player-status"><span className="mode-badge">{practiceType ? 'PRACTICE MODE' : 'EXAM MODE'}</span><span>Scene {engine.scenarioIndex + 1}/{engine.route.length}</span><button onClick={() => setManualPaused(true)}>Pause <kbd>Esc</kbd></button></div>
       </header>
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
           <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} reducedMotion={preferences.reducedMotion} />
-          {instructionVisible && (
-            <div className="examiner-card" aria-live="polite">
-              <span className="examiner-avatar" aria-hidden="true">EX</span>
-              <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>
-              <button onClick={() => speakInstruction(scenario.examinerInstruction, true)} aria-label="Repeat examiner instruction">↻</button>
-            </div>
-          )}
+          <button className="lane-target lane-target-left" disabled={engine.lane === -1} onClick={() => perform('lane-left')} aria-label="Change to left lane"><span>← CHANGE LANE</span><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className="lane-target lane-target-right" disabled={engine.lane === 1} onClick={() => perform('lane-right')} aria-label="Change to right lane"><span>CHANGE LANE →</span><kbd>{keyLabel('lane-right')}</kbd></button>
+          <div className="examiner-card" aria-live="polite">
+            <span className="examiner-avatar" aria-hidden="true">EX</span>
+            <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>
+            <button onClick={() => speakInstruction(scenario.examinerInstruction, true)} aria-label="Repeat examiner instruction">↻</button>
+          </div>
+          <div className="route-progress-card" aria-label={`Route progress: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
+            <div><small>ROUTE PROGRESS</small><strong>{formatTime(remaining)}</strong></div>
+            <div className="route-dots">{engine.route.map((item, index) => <i key={`${item.id}-${index}`} className={index < engine.scenarioIndex ? 'done' : index === engine.scenarioIndex ? 'current' : ''} />)}</div>
+          </div>
         </div>
         <aside className="control-deck" aria-label="Driving controls">
-          <div className="control-group"><h2>Observe</h2>
-            <div className="two-buttons"><button className={`${checklist.has('mirror-left') ? 'used' : ''} ${recentAction === 'mirror-left' ? 'recent-control' : ''}`} onClick={() => perform('mirror-left')}>← Mirror</button><button className={`${checklist.has('mirror-right') ? 'used' : ''} ${recentAction === 'mirror-right' ? 'recent-control' : ''}`} onClick={() => perform('mirror-right')}>Mirror →</button></div>
-            <div className="two-buttons"><button className={`${checklist.has('shoulder-left') ? 'used' : ''} ${recentAction === 'shoulder-left' ? 'recent-control' : ''}`} onClick={() => perform('shoulder-left')}>← Shoulder</button><button className={`${checklist.has('shoulder-right') ? 'used' : ''} ${recentAction === 'shoulder-right' ? 'recent-control' : ''}`} onClick={() => perform('shoulder-right')}>Shoulder →</button></div>
+          <div className="instrument-panel">
+            <div className="speed-readout"><span>SPEED</span><strong>{Math.round(engine.speedKph)}</strong><small>km/h</small></div>
+            <div className="limit-readout"><span>LIMIT</span><strong>{scenario.speedLimitKph}</strong></div>
+            <div className="time-readout"><span>TIME LEFT</span><strong>{formatTime(remaining)}</strong></div>
           </div>
-          <div className="control-group"><h2>Signal</h2><div className="two-buttons"><button aria-pressed={engine.signal === 'left'} className={engine.signal === 'left' ? 'active-control' : ''} onClick={() => perform('signal-left')}>← Left</button><button aria-pressed={engine.signal === 'right'} className={engine.signal === 'right' ? 'active-control' : ''} onClick={() => perform('signal-right')}>Right →</button></div></div>
-          <div className="control-group"><h2>Position</h2><div className="two-buttons"><button className={recentAction === 'lane-left' ? 'recent-control' : ''} onClick={() => perform('lane-left')}>← Move left</button><button className={recentAction === 'lane-right' ? 'recent-control' : ''} onClick={() => perform('lane-right')}>Move right →</button></div></div>
+          <div className="control-grid">
+            <button aria-label="Left signal" aria-pressed={engine.signal === 'left'} className={controlClass('signal-left', engine.signal === 'left')} onClick={() => perform('signal-left')}><span className="control-icon signal-icon">←</span><strong>LEFT SIGNAL</strong><kbd>{keyLabel('signal-left')}</kbd></button>
+            <button aria-label="Right signal" aria-pressed={engine.signal === 'right'} className={controlClass('signal-right', engine.signal === 'right')} onClick={() => perform('signal-right')}><span className="control-icon signal-icon">→</span><strong>RIGHT SIGNAL</strong><kbd>{keyLabel('signal-right')}</kbd></button>
+            <button aria-label="Left mirror" className={controlClass('mirror-left')} onClick={() => perform('mirror-left')}><span className="control-icon mirror-icon">▱</span><strong>LEFT MIRROR</strong><kbd>{keyLabel('mirror-left')}</kbd></button>
+            <button aria-label="Right mirror" className={controlClass('mirror-right')} onClick={() => perform('mirror-right')}><span className="control-icon mirror-icon">▰</span><strong>RIGHT MIRROR</strong><kbd>{keyLabel('mirror-right')}</kbd></button>
+            <button aria-label="Left shoulder check" className={controlClass('shoulder-left')} onClick={() => perform('shoulder-left')}><span className="control-icon shoulder-icon">◉←</span><strong>LEFT SHOULDER</strong><kbd>{keyLabel('shoulder-left')}</kbd></button>
+            <button aria-label="Right shoulder check" className={controlClass('shoulder-right')} onClick={() => perform('shoulder-right')}><span className="control-icon shoulder-icon">→◉</span><strong>RIGHT SHOULDER</strong><kbd>{keyLabel('shoulder-right')}</kbd></button>
+          </div>
           <div className="pedals">
-            <button className="brake" onPointerDown={() => beginControl('brake')} onPointerUp={() => endControl('brake')} onPointerCancel={() => endControl('brake')} onPointerLeave={() => endControl('brake')}>Brake<small>S / ↓</small></button>
-            <button className="accelerate" onPointerDown={() => beginControl('accelerate')} onPointerUp={() => endControl('accelerate')} onPointerCancel={() => endControl('accelerate')} onPointerLeave={() => endControl('accelerate')}>Accelerate<small>W / ↑</small></button>
+            <button aria-label="Brake" className="brake" onPointerDown={() => beginControl('brake')} onPointerUp={() => endControl('brake')} onPointerCancel={() => endControl('brake')} onPointerLeave={() => endControl('brake')}><span>!</span><strong>BRAKE</strong><kbd>{keyLabel('brake')}</kbd></button>
+            <button aria-label="Accelerate" className="accelerate" onPointerDown={() => beginControl('accelerate')} onPointerUp={() => endControl('accelerate')} onPointerCancel={() => endControl('accelerate')} onPointerLeave={() => endControl('accelerate')}><span>↑</span><strong>ACCELERATE</strong><kbd>{keyLabel('accelerate')}</kbd></button>
           </div>
           {engine.stage !== 'exam' && <div className="practice-hint"><strong>Practice checklist</strong><span>{scenario.requiredActions.filter((action) => checklist.has(action)).length}/{scenario.requiredActions.length} expected actions observed</span></div>}
         </aside>
