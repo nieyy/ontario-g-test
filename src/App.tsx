@@ -175,8 +175,8 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
         </section>
         <section className="panel controls-cheat">
           <h2>Keyboard</h2>
-          <div><kbd>W</kbd><kbd>↑</kbd><span>Accelerate</span></div>
-          <div><kbd>S</kbd><kbd>↓</kbd><span>Brake</span></div>
+          <div><kbd>W</kbd><kbd>↑</kbd><span>Accelerate; release to hold speed</span></div>
+          <div><kbd>S</kbd><kbd>↓</kbd><span>Brake; release to hold the new speed</span></div>
           <div><kbd>A</kbd><kbd>D</kbd><span>Change lane</span></div>
           <div><kbd>,</kbd><kbd>.</kbd><span>Left / right signal</span></div>
           <div><kbd>Q</kbd><kbd>E</kbd><span>Left / right mirror</span></div>
@@ -339,7 +339,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
         </div>
         <aside className="control-deck" aria-label="Driving controls">
           <div className="instrument-panel">
-            <div className="speed-readout"><span>SPEED</span><strong>{Math.round(engine.speedKph)}</strong><small>km/h</small></div>
+            <div className="speed-readout"><span>SPEED</span><strong>{Math.round(engine.speedKph)}</strong><small><b className="hold-badge">HOLD</b> km/h</small></div>
             <div className="limit-readout"><span>LIMIT</span><strong>{scenario.speedLimitKph}</strong></div>
             <div className="time-readout"><span>TIME LEFT</span><strong>{formatTime(remaining)}</strong></div>
           </div>

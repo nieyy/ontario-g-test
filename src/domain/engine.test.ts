@@ -25,6 +25,19 @@ describe('deterministic engine', () => {
     expect(first.speedKph).toBeCloseTo(second.speedKph)
   })
 
+  it('holds the selected speed after acceleration or braking is released', () => {
+    let state = createEngine(10, 'practice')
+    state = advanceEngine(state, 2, new Set(['accelerate'] as const))
+    const acceleratedSpeed = state.speedKph
+    state = advanceEngine(state, 5)
+    expect(state.speedKph).toBeCloseTo(acceleratedSpeed)
+
+    state = advanceEngine(state, 0.5, new Set(['brake'] as const))
+    const reducedSpeed = state.speedKph
+    state = advanceEngine(state, 5)
+    expect(state.speedKph).toBeCloseTo(reducedSpeed)
+  })
+
   it('pauses on a dangerous finding and preserves it after continue', () => {
     let state = createEngine(11)
     state = advanceEngine(state, state.route[0].durationSeconds)
@@ -41,5 +54,16 @@ describe('deterministic engine', () => {
     state = advanceEngine(state, state.route[0].durationSeconds)
     expect(state.findings.some((item) => item.severity === 'dangerous')).toBe(false)
     expect(state.completed).toBe(true)
+  })
+
+  it('centres the vehicle when a new authored road scene begins', () => {
+    let state = createEngine(19, 'practice')
+    state = recordAction(state, 'lane-left')
+    expect(state.lane).toBe(-1)
+
+    state = advanceEngine(state, state.route[0].durationSeconds)
+
+    expect(state.scenarioIndex).toBe(1)
+    expect(state.lane).toBe(0)
   })
 })

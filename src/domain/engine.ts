@@ -191,8 +191,9 @@ export function advanceEngine(
   const scenario = currentScenario(state)
   const acceleration = controls.has('accelerate') ? 18 : 0
   const braking = controls.has('brake') ? 34 : 0
-  const drag = controls.has('accelerate') || controls.has('brake') ? 0 : 2.5
-  const nextSpeed = Math.max(0, Math.min(120, state.speedKph + (acceleration - braking - drag) * seconds))
+  // Keyboard-friendly speed assist: releasing both pedals holds the chosen
+  // speed so attention can stay on observation and decision practice.
+  const nextSpeed = Math.max(0, Math.min(120, state.speedKph + (acceleration - braking) * seconds))
   const nextElapsed = state.scenarioElapsed + seconds
   const updated: EngineState = {
     ...state,
@@ -213,6 +214,10 @@ export function advanceEngine(
     scenarioIndex: isFinal ? state.scenarioIndex : state.scenarioIndex + 1,
     scenarioElapsed: 0,
     scenarioActions: [],
+    // Each authored vignette begins with the vehicle centred in its own
+    // three-lane road model. Carrying a lane edge into the next vignette can
+    // make that scene's required merge direction impossible to select.
+    lane: 0,
     signal: null,
     paused: dangerPending,
     dangerPending,

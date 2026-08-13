@@ -38,6 +38,23 @@ test('restores a version-compatible interrupted checkpoint after reload', async 
   await expect(page.getByText('G TEST PRACTICE', { exact: true })).toBeVisible()
 })
 
+test('holds speed after the keyboard accelerator is released', async ({ page }) => {
+  await page.goto('?seed=31')
+  await page.getByRole('button', { name: 'Choose a test centre' }).click()
+  await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Start when ready' }).click()
+  await expect(page.getByText('HOLD', { exact: true })).toBeVisible()
+
+  await page.keyboard.down('ArrowUp')
+  await page.waitForTimeout(700)
+  await page.keyboard.up('ArrowUp')
+  const speedAfterRelease = Number(await page.locator('.speed-readout strong').innerText())
+  expect(speedAfterRelease).toBeGreaterThan(0)
+
+  await page.waitForTimeout(700)
+  await expect(page.locator('.speed-readout strong')).toHaveText(String(speedAfterRelease))
+})
+
 test('home and centre pages have no serious automated accessibility violations', async ({ page }) => {
   await page.goto('?debug=1')
   let results = await new AxeBuilder({ page }).analyze()
@@ -68,5 +85,8 @@ test.describe('mobile controls', () => {
     await page.getByRole('button', { name: 'Change to right lane' }).click()
     await expect(page.getByRole('status')).toHaveText(/Right lane selected/)
     await expect(page.getByLabel('Current lane')).toHaveText(/Lane:\s*Right/)
+    await page.getByRole('button', { name: 'Change to left lane' }).click()
+    await expect(page.getByRole('status')).toHaveText(/Left lane selected/)
+    await expect(page.getByLabel('Current lane')).toHaveText(/Lane:\s*Centre/)
   })
 })
