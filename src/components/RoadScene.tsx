@@ -103,7 +103,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, scenarioElapsed, r
         <path d="M338 540 C355 459 398 423 480 423 C562 423 605 459 622 540Z" fill="#0b1014" stroke="#34444e" strokeWidth="8" />
         <circle cx="480" cy="489" r="43" fill="#25333d" stroke="#52636d" strokeWidth="9" />
 
-        <g transform="translate(36 32)">
+        <g transform="translate(36 438)">
           <rect width="176" height="68" rx="12" fill="#10202bd9" />
           <text x="18" y="26" fill="#a9c0ce" fontSize="14">SPEED</text>
           <text x="18" y="55" fill="white" fontSize="31" fontWeight="800">{Math.round(speedKph)}</text>
