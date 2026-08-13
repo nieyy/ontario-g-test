@@ -307,6 +307,8 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
   const totalDuration = engine.route.reduce((sum, item) => sum + item.durationSeconds, 0)
   const remaining = totalDuration - engine.elapsed
   const checklist = new Set(engine.scenarioActions.map((action) => action.type))
+  const leftLaneTarget = engine.lane === 1 ? 'Centre' : 'Left'
+  const rightLaneTarget = engine.lane === -1 ? 'Centre' : 'Right'
   const keyLabel = (action: ActionType) => preferences.keyBindings.find((binding) => binding.action === action)?.label ?? '—'
   const controlClass = (action: ActionType, active = false) => [
     'control-tile',
@@ -325,8 +327,8 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       <section className="drive-layout">
         <div className="scene-column">
           <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} reducedMotion={preferences.reducedMotion} />
-          <button className="lane-target lane-target-left" disabled={engine.lane === -1} onClick={() => perform('lane-left')} aria-label="Change to left lane"><span>← CHANGE LANE</span><kbd>{keyLabel('lane-left')}</kbd></button>
-          <button className="lane-target lane-target-right" disabled={engine.lane === 1} onClick={() => perform('lane-right')} aria-label="Change to right lane"><span>CHANGE LANE →</span><kbd>{keyLabel('lane-right')}</kbd></button>
+          <button className="lane-target lane-target-left" disabled={engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className="lane-target lane-target-right" disabled={engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
           <div className="examiner-card" aria-live="polite">
             <span className="examiner-avatar" aria-hidden="true">EX</span>
             <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>

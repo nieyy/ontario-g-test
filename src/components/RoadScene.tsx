@@ -15,20 +15,34 @@ const feedbackLabels: Partial<Record<ActionType, string>> = {
   'mirror-right': 'Right mirror checked',
   'shoulder-left': 'Left shoulder checked',
   'shoulder-right': 'Right shoulder checked',
-  'lane-left': 'Left lane selected',
-  'lane-right': 'Right lane selected',
 }
 
 export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, reducedMotion }: Props) {
   const phase = reducedMotion ? 0 : (scenarioElapsed * Math.max(speedKph, 8)) % 120
   const isFreeway = scenario.environment === 'freeway'
+  const hasIntersection = ['right-on-red', 'yellow-light', 'multilane-left'].includes(scenario.type)
+  const approachProgress = hasIntersection
+    ? Math.min(0.9, scenarioElapsed / (scenario.durationSeconds * 0.75))
+    : 0
+  const intersectionY = 260 + approachProgress * 160
+  const intersectionHeight = 22 + approachProgress * 84
+  const stopLineY = intersectionY + intersectionHeight / 2 + 9
+  const roadPerspective = Math.max(0, (stopLineY - 248) / 292)
+  const stopLineLeft = 365 - roadPerspective * 365
+  const stopLineRight = 595 + roadPerspective * 365
+  const intersectionStage = approachProgress >= 0.72 ? 'Decision zone' : approachProgress >= 0.32 ? 'Intersection approaching' : 'Intersection ahead'
   const leadY = 235 + Math.sin(scenarioElapsed / 5) * 8
-  const label = `First-person ${scenario.environment} road scene for ${scenario.title}. Current speed ${Math.round(speedKph)} kilometres per hour.`
+  const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${hasIntersection ? `${intersectionStage}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
+  const laneName = lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'
   const feedbackLabel = recentAction === 'signal-left'
     ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
     : recentAction === 'signal-right'
       ? `Right signal ${signal === 'right' ? 'on' : 'off'}`
-      : recentAction
+      : recentAction === 'lane-left'
+        ? `Moved one lane left — now in ${laneName} lane`
+        : recentAction === 'lane-right'
+          ? `Moved one lane right — now in ${laneName} lane`
+          : recentAction
         ? feedbackLabels[recentAction]
         : undefined
 
@@ -90,6 +104,25 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           )
         })}
 
+        {hasIntersection && (
+          <g data-testid="approaching-intersection" data-approach={approachProgress.toFixed(2)} aria-hidden="true">
+            <rect x="-120" y={intersectionY - intersectionHeight / 2} width="1200" height={intersectionHeight} fill="#343c41" />
+            <line x1="-120" y1={intersectionY - intersectionHeight / 2} x2="1080" y2={intersectionY - intersectionHeight / 2} stroke="#eee9d8" strokeWidth={4 + approachProgress * 5} />
+            <line x1="-120" y1={intersectionY + intersectionHeight / 2} x2="1080" y2={intersectionY + intersectionHeight / 2} stroke="#eee9d8" strokeWidth={4 + approachProgress * 5} />
+            {[0.18, 0.34, 0.5, 0.66, 0.82].map((position) => {
+              const stripeX = stopLineLeft + (stopLineRight - stopLineLeft) * position
+              const stripeWidth = Math.max(3, (stopLineRight - stopLineLeft) * 0.075)
+              return <rect key={position} x={stripeX - stripeWidth / 2} y={stopLineY - 5} width={stripeWidth} height={6 + approachProgress * 7} fill="#f7f4e8" opacity=".92" />
+            })}
+            <line x1={stopLineLeft} y1={stopLineY + 12 + approachProgress * 4} x2={stopLineRight} y2={stopLineY + 12 + approachProgress * 4} stroke="white" strokeWidth={5 + approachProgress * 7} />
+            <g transform={`translate(480 ${stopLineY + 42 + approachProgress * 26}) scale(${0.65 + approachProgress * 0.65})`} fill="none" stroke="#f3e887" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round">
+              {scenario.type === 'right-on-red' && <path d="M0 25 V-12 Q0-30 20-30 H47 M34-44 L49-30 L34-16" />}
+              {scenario.type === 'multilane-left' && <path d="M0 25 V-12 Q0-30-20-30 H-47 M-34-44 L-49-30 L-34-16" />}
+              {scenario.type === 'yellow-light' && <path d="M0 27 V-34 M-15-18 L0-35 L15-18" />}
+            </g>
+          </g>
+        )}
+
         {(scenario.type === 'slow-lead' || scenario.type === 'freeway-merge') && (
           <g transform={`translate(${lane * -22} ${leadY})`} aria-hidden="true">
             <path d="M430 0 h100 l22 48 H408Z" fill="#26333f" />
@@ -102,14 +135,14 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         )}
 
         {scenario.trafficLight && (
-          <g aria-hidden="true">
-            <rect x="576" y="92" width="10" height="164" fill="#333b40" />
-            <rect x="548" y="85" width="66" height="116" rx="9" fill="#22292e" />
+          <g aria-hidden="true" transform={`translate(${548 + approachProgress * 86} ${85 + approachProgress * 48}) scale(${0.7 + approachProgress * 0.5})`}>
+            <rect x="28" y="7" width="10" height="164" fill="#333b40" />
+            <rect width="66" height="116" rx="9" fill="#22292e" />
             {(['red', 'yellow', 'green'] as const).map((colour, index) => (
               <circle
                 key={colour}
-                cx="581"
-                cy={112 + index * 33}
+                cx="33"
+                cy={27 + index * 33}
                 r="12"
                 fill={scenario.trafficLight === colour ? ({ red: '#ef4e43', yellow: '#ffd041', green: '#42cc75' }[colour]) : '#4b5358'}
               />
@@ -132,7 +165,12 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
       </svg>
       <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>LEFT MIRROR</b><span /></div>
       <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>RIGHT MIRROR</b><span /></div>
-      <div className="lane-indicator" aria-label="Current lane" aria-live="polite">Lane: <strong>{lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'}</strong></div>
+      <div className="lane-indicator" aria-label="Current lane" aria-live="polite">
+        {(['Left', 'Centre', 'Right'] as const).map((name, index) => (
+          <span key={name} className={lane === index - 1 ? 'current' : ''}><i aria-hidden="true">▲</i>{name}</span>
+        ))}
+      </div>
+      {hasIntersection && <div className={`scene-event ${approachProgress >= 0.72 ? 'decision' : ''}`} aria-live="polite"><strong>{intersectionStage}</strong><span>{approachProgress >= 0.72 ? 'Scan · choose · act' : 'Watch the signal and road markings'}</span></div>}
       {recentAction && feedbackLabel && (
         <div className={`action-feedback feedback-${recentAction}`} role="status">
           <span>{recentAction.includes('left') ? '←' : '→'}</span>{feedbackLabel}
