@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
+    environmentOptions: {
+      jsdom: { url: 'http://localhost/ontario-g-test/' },
+    },
+    exclude: ['e2e/**', 'node_modules/**'],
     setupFiles: ['./src/test/setup.ts'],
   },
 })

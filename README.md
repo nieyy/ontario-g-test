@@ -1,52 +1,55 @@
-# Ontario G Test Practice
+# Ontario G Practice
 
-Interactive Ontario G road test practice with examiner instructions,
-location-based road scenarios, and mistake reviews.
+A static, first-person interactive study game for Ontario G road-test preparation. Version 1.0 ships a 16-minute Newmarket content pack with common English examiner instructions, six scenario families, deterministic mistake review, focused practice, and local-only history.
 
-The project focuses on the observation and decisions tested during an Ontario G
-road test. It is not a vehicle-physics simulator and does not reproduce or
-guarantee an official DriveTest route.
+Play it at <https://nieyy.github.io/ontario-g-test/>.
 
-## Current status
+## What is included
 
-The project is in early development. Newmarket is the first planned test-centre
-content pack, based around the road structures near 320 Harry Walker Parkway S.
-Other Ontario centres can be added after their road content is verified.
+- Newmarket centre selection with a clear evidence and route disclaimer
+- Three authored variants for each of six scenario families: right on red, yellow-light decisions, multi-lane left turns, freeway merging, slow lead vehicles, and freeway exits
+- Mouse, touch, and keyboard input (`WASD`/arrows, `,`/`.`, `Q`/`E`, `Shift+Q`/`Shift+E`)
+- Browser `en-CA` speech with optional Chinese subtitles
+- A fixed-step, seeded TypeScript simulation independent from React and SVG rendering
+- Dangerous-event pause with an explicit “end” or “continue as practice” choice
+- Situation–action–impact–improvement report, five learning dimensions, event timeline, and recent-attempt weakness suggestion
+- IndexedDB history and local preferences; no account, analytics, paid API, backend, or data upload
+
+This is an independent training tool. It is not affiliated with DriveTest or the Government of Ontario. The scenes are authored approximations, not official, recorded, or predicted test routes, and reports are not official scores or pass predictions.
 
 ## Local development
 
-Requirements: Node.js 24 and npm.
+Requires Node.js 24 and npm.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Run all project checks:
+Run the deterministic unit/integration checks and production build:
 
 ```bash
 npm run check
 ```
 
-Create and preview a production build:
+Install browser engines once, then run desktop Chromium/WebKit, accessibility, full-flow, and mobile-control tests:
 
 ```bash
-npm run build
-npm run preview
+npx playwright install chromium webkit
+npm run test:e2e
 ```
+
+The complete release gate is `npm run check:release`.
+
+## Content contract
+
+Centre and scenario content lives in `src/content`. Every centre has a stable ID, content version, publication state, evidence metadata, disclaimer, and three or more variants per scenario family. Run `npm run validate:content` after any content change.
+
+The Newmarket address and available G service are linked to the official DriveTest centre listing. All simulated road geometry, traffic events, speeds, and examiner situations in 1.0 are deliberately labelled as authored teaching content.
 
 ## Deployment
 
-Pushes to `main` are checked, built, and deployed through GitHub Actions. Vite
-uses the `/ontario-g-test/` base path for the GitHub Pages project site:
-
-<https://nieyy.github.io/ontario-g-test/>
-
-## Privacy and independence
-
-The MVP does not use analytics, accounts, paid map APIs, or remote driving-history
-storage. This is an independent practice project and is not affiliated with
-DriveTest or the Ontario Ministry of Transportation.
+The GitHub Actions workflow verifies content, lint, unit tests, builds, Chromium/WebKit E2E tests, and accessibility checks before deploying `dist` to GitHub Pages from `main`. Vite uses the project-site base path `/ontario-g-test/`.
 
 ## License
 
