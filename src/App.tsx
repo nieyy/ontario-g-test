@@ -203,7 +203,9 @@ type PlayerProps = {
 function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLockConflict }: PlayerProps) {
   const [engine, setEngine] = useState<EngineState>(() => checkpoint?.state ?? createEngine(seedFromUrl(), practiceType ? 'practice' : 'exam', practiceType))
   const [manualPaused, setManualPaused] = useState(false)
+  const [recentAction, setRecentAction] = useState<ActionType | null>(null)
   const controls = useRef(new Set<ActionType>())
+  const feedbackTimer = useRef<number | undefined>(undefined)
   const [startedAt] = useState(checkpoint?.startedAt ?? new Date().toISOString())
   const [attemptId] = useState(checkpoint?.attemptId ?? `${engine.seed}-${startedAt}`)
   const engineRef = useRef(engine)
@@ -217,8 +219,13 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       setManualPaused((value) => !value)
       return
     }
+    window.clearTimeout(feedbackTimer.current)
+    setRecentAction(action)
+    feedbackTimer.current = window.setTimeout(() => setRecentAction(null), 900)
     setEngine((state) => recordAction(state, action))
   }, [])
+
+  useEffect(() => () => window.clearTimeout(feedbackTimer.current), [])
 
   useEffect(() => { engineRef.current = engine }, [engine])
 
@@ -311,7 +318,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
-          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} scenarioElapsed={engine.scenarioElapsed} reducedMotion={preferences.reducedMotion} />
+          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} reducedMotion={preferences.reducedMotion} />
           {instructionVisible && (
             <div className="examiner-card" aria-live="polite">
               <span className="examiner-avatar" aria-hidden="true">EX</span>
@@ -322,11 +329,11 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
         </div>
         <aside className="control-deck" aria-label="Driving controls">
           <div className="control-group"><h2>Observe</h2>
-            <div className="two-buttons"><button className={checklist.has('mirror-left') ? 'used' : ''} onClick={() => perform('mirror-left')}>← Mirror</button><button className={checklist.has('mirror-right') ? 'used' : ''} onClick={() => perform('mirror-right')}>Mirror →</button></div>
-            <div className="two-buttons"><button className={checklist.has('shoulder-left') ? 'used' : ''} onClick={() => perform('shoulder-left')}>← Shoulder</button><button className={checklist.has('shoulder-right') ? 'used' : ''} onClick={() => perform('shoulder-right')}>Shoulder →</button></div>
+            <div className="two-buttons"><button className={`${checklist.has('mirror-left') ? 'used' : ''} ${recentAction === 'mirror-left' ? 'recent-control' : ''}`} onClick={() => perform('mirror-left')}>← Mirror</button><button className={`${checklist.has('mirror-right') ? 'used' : ''} ${recentAction === 'mirror-right' ? 'recent-control' : ''}`} onClick={() => perform('mirror-right')}>Mirror →</button></div>
+            <div className="two-buttons"><button className={`${checklist.has('shoulder-left') ? 'used' : ''} ${recentAction === 'shoulder-left' ? 'recent-control' : ''}`} onClick={() => perform('shoulder-left')}>← Shoulder</button><button className={`${checklist.has('shoulder-right') ? 'used' : ''} ${recentAction === 'shoulder-right' ? 'recent-control' : ''}`} onClick={() => perform('shoulder-right')}>Shoulder →</button></div>
           </div>
-          <div className="control-group"><h2>Signal</h2><div className="two-buttons"><button className={engine.signal === 'left' ? 'active-control' : ''} onClick={() => perform('signal-left')}>← Left</button><button className={engine.signal === 'right' ? 'active-control' : ''} onClick={() => perform('signal-right')}>Right →</button></div></div>
-          <div className="control-group"><h2>Position</h2><div className="two-buttons"><button onClick={() => perform('lane-left')}>← Move left</button><button onClick={() => perform('lane-right')}>Move right →</button></div></div>
+          <div className="control-group"><h2>Signal</h2><div className="two-buttons"><button aria-pressed={engine.signal === 'left'} className={engine.signal === 'left' ? 'active-control' : ''} onClick={() => perform('signal-left')}>← Left</button><button aria-pressed={engine.signal === 'right'} className={engine.signal === 'right' ? 'active-control' : ''} onClick={() => perform('signal-right')}>Right →</button></div></div>
+          <div className="control-group"><h2>Position</h2><div className="two-buttons"><button className={recentAction === 'lane-left' ? 'recent-control' : ''} onClick={() => perform('lane-left')}>← Move left</button><button className={recentAction === 'lane-right' ? 'recent-control' : ''} onClick={() => perform('lane-right')}>Move right →</button></div></div>
           <div className="pedals">
             <button className="brake" onPointerDown={() => beginControl('brake')} onPointerUp={() => endControl('brake')} onPointerCancel={() => endControl('brake')} onPointerLeave={() => endControl('brake')}>Brake<small>S / ↓</small></button>
             <button className="accelerate" onPointerDown={() => beginControl('accelerate')} onPointerUp={() => endControl('accelerate')} onPointerCancel={() => endControl('accelerate')} onPointerLeave={() => endControl('accelerate')}>Accelerate<small>W / ↑</small></button>

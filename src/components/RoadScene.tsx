@@ -1,19 +1,36 @@
-import type { ScenarioVariant } from '../content/types'
+import type { ActionType, ScenarioVariant } from '../content/types'
 
 type Props = {
   scenario: ScenarioVariant
   speedKph: number
   lane: -1 | 0 | 1
   signal: 'left' | 'right' | null
+  recentAction: ActionType | null
   scenarioElapsed: number
   reducedMotion: boolean
 }
 
-export function RoadScene({ scenario, speedKph, lane, signal, scenarioElapsed, reducedMotion }: Props) {
+const feedbackLabels: Partial<Record<ActionType, string>> = {
+  'mirror-left': 'Left mirror checked',
+  'mirror-right': 'Right mirror checked',
+  'shoulder-left': 'Left shoulder checked',
+  'shoulder-right': 'Right shoulder checked',
+  'lane-left': 'Left lane selected',
+  'lane-right': 'Right lane selected',
+}
+
+export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, reducedMotion }: Props) {
   const phase = reducedMotion ? 0 : (scenarioElapsed * Math.max(speedKph, 8)) % 120
   const isFreeway = scenario.environment === 'freeway'
   const leadY = 235 + Math.sin(scenarioElapsed / 5) * 8
   const label = `First-person ${scenario.environment} road scene for ${scenario.title}. Current speed ${Math.round(speedKph)} kilometres per hour.`
+  const feedbackLabel = recentAction === 'signal-left'
+    ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
+    : recentAction === 'signal-right'
+      ? `Right signal ${signal === 'right' ? 'on' : 'off'}`
+      : recentAction
+        ? feedbackLabels[recentAction]
+        : undefined
 
   return (
     <div className="road-frame">
@@ -29,7 +46,8 @@ export function RoadScene({ scenario, speedKph, lane, signal, scenarioElapsed, r
           </linearGradient>
         </defs>
 
-        <rect width="960" height="540" fill="url(#sky)" />
+        <g className={reducedMotion ? 'road-world' : 'road-world road-world-animated'} style={{ transform: `translateX(${-lane * 90}px)` }}>
+        <rect x="-120" width="1200" height="540" fill="url(#sky)" />
         <path d="M0 252 H960 V340 L0 324Z" fill={isFreeway ? '#678a56' : '#779861'} />
         {!isFreeway && (
           <g aria-hidden="true">
@@ -98,10 +116,13 @@ export function RoadScene({ scenario, speedKph, lane, signal, scenarioElapsed, r
             ))}
           </g>
         )}
+        </g>
 
+        <g transform={`rotate(${lane * 12} 480 489)`}>
         <path d="M172 540 C240 422 335 386 480 386 C625 386 720 422 788 540Z" fill="#172129" />
         <path d="M338 540 C355 459 398 423 480 423 C562 423 605 459 622 540Z" fill="#0b1014" stroke="#34444e" strokeWidth="8" />
         <circle cx="480" cy="489" r="43" fill="#25333d" stroke="#52636d" strokeWidth="9" />
+        </g>
 
         <g transform="translate(36 438)">
           <rect width="176" height="68" rx="12" fill="#10202bd9" />
@@ -117,8 +138,14 @@ export function RoadScene({ scenario, speedKph, lane, signal, scenarioElapsed, r
           </g>
         )}
       </svg>
-      <div className="mirror mirror-left" aria-hidden="true"><span /></div>
-      <div className="mirror mirror-right" aria-hidden="true"><span /></div>
+      <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><span /></div>
+      <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><span /></div>
+      <div className="lane-indicator" aria-label="Current lane" aria-live="polite">Lane: <strong>{lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'}</strong></div>
+      {recentAction && feedbackLabel && (
+        <div className={`action-feedback feedback-${recentAction}`} role="status">
+          <span>{recentAction.includes('left') ? '←' : '→'}</span>{feedbackLabel}
+        </div>
+      )}
     </div>
   )
 }
