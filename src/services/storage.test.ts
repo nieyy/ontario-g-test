@@ -10,19 +10,19 @@ describe('local data services', () => {
     expect(loadPreferences().speechEnabled).toBe(false)
   })
 
-  it('migrates legacy lane labels that incorrectly included turn arrows', () => {
+  it('migrates lane labels saved by the separated-control release', () => {
     window.localStorage.setItem('ontario-g-test.preferences.v1', JSON.stringify({
       ...defaultPreferences,
       keyBindings: defaultPreferences.keyBindings.map((binding) => binding.action === 'lane-left'
-        ? { ...binding, label: 'A / ←' }
+        ? { ...binding, label: 'A' }
         : binding.action === 'lane-right'
-          ? { ...binding, label: 'D / →' }
+          ? { ...binding, label: 'D' }
           : binding),
     }))
 
     const preferences = loadPreferences()
-    expect(preferences.keyBindings.find((binding) => binding.action === 'lane-left')?.label).toBe('A')
-    expect(preferences.keyBindings.find((binding) => binding.action === 'lane-right')?.label).toBe('D')
+    expect(preferences.keyBindings.find((binding) => binding.action === 'lane-left')?.label).toBe('A / ←')
+    expect(preferences.keyBindings.find((binding) => binding.action === 'lane-right')?.label).toBe('D / →')
   })
 
   it('derives a weak scenario from the latest ten attempts', () => {

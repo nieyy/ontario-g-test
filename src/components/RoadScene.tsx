@@ -55,12 +55,14 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
     ? `${laneCameraTransform} translate(${-turnSign * turnProgress * 330}px, ${turnProgress * 62}px) rotate(${-turnSign * turnProgress * 16}deg)`
     : laneCameraTransform
   const steeringAngle = turnDirection
-    ? -turnSign * 52 * Math.sin(turnProgress * Math.PI)
-    : recentAction === 'lane-left'
-      ? 14
-      : recentAction === 'lane-right'
-        ? -14
-        : 0
+    ? turnSign * 25 * Math.sin(turnProgress * Math.PI)
+    : 0
+  const steeringClass = [
+    'steering-wheel',
+    reducedMotion ? '' : 'steering-wheel-animated',
+    !reducedMotion && !turnDirection && recentAction === 'lane-left' ? 'steering-wheel-lane-left' : '',
+    !reducedMotion && !turnDirection && recentAction === 'lane-right' ? 'steering-wheel-lane-right' : '',
+  ].filter(Boolean).join(' ')
   const feedbackLabel = recentAction === 'signal-left'
     ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
     : recentAction === 'signal-right'
@@ -182,8 +184,8 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           </g>
         )}
 
-        <g className={reducedMotion ? 'steering-wheel' : 'steering-wheel steering-wheel-animated'} style={{ transform: `rotate(${steeringAngle}deg)` }}>
         <path d="M172 540 C240 422 335 386 480 386 C625 386 720 422 788 540Z" fill="#172129" />
+        <g className={steeringClass} style={{ transform: `rotate(${steeringAngle}deg)` }}>
         <path d="M338 540 C355 459 398 423 480 423 C562 423 605 459 622 540Z" fill="#0b1014" stroke="#34444e" strokeWidth="8" />
         <circle cx="480" cy="489" r="43" fill="#25333d" stroke="#52636d" strokeWidth="9" />
         </g>

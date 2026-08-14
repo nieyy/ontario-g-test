@@ -36,8 +36,8 @@ export const defaultPreferences: Preferences = {
   keyBindings: [
     { action: 'accelerate', code: 'KeyW', label: 'W / ↑' },
     { action: 'brake', code: 'KeyS', label: 'S / ↓' },
-    { action: 'lane-left', code: 'KeyA', label: 'A' },
-    { action: 'lane-right', code: 'KeyD', label: 'D' },
+    { action: 'lane-left', code: 'KeyA', label: 'A / ←' },
+    { action: 'lane-right', code: 'KeyD', label: 'D / →' },
     { action: 'signal-left', code: 'Comma', label: ',' },
     { action: 'signal-right', code: 'Period', label: '.' },
     { action: 'mirror-left', code: 'KeyQ', label: 'Q' },
@@ -54,8 +54,8 @@ export function loadPreferences(): Preferences {
     if (!raw) return defaultPreferences
     const stored = JSON.parse(raw) as Partial<Preferences>
     const keyBindings = stored.keyBindings?.map((binding) => {
-      if (binding.action === 'lane-left' && binding.label === 'A / ←') return { ...binding, label: 'A' }
-      if (binding.action === 'lane-right' && binding.label === 'D / →') return { ...binding, label: 'D' }
+      if (binding.action === 'lane-left' && binding.label === 'A') return { ...binding, label: 'A / ←' }
+      if (binding.action === 'lane-right' && binding.label === 'D') return { ...binding, label: 'D / →' }
       return binding
     })
     return { ...defaultPreferences, ...stored, keyBindings: keyBindings ?? defaultPreferences.keyBindings }

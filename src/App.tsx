@@ -75,8 +75,8 @@ function actionForKey(event: KeyboardEvent, preferences: Preferences): ActionTyp
   const aliases: Record<string, ActionType> = {
     ArrowUp: 'accelerate',
     ArrowDown: 'brake',
-    ArrowLeft: 'turn-left',
-    ArrowRight: 'turn-right',
+    ArrowLeft: 'lane-left',
+    ArrowRight: 'lane-right',
   }
   return aliases[event.code] ?? preferences.keyBindings.find((binding) => binding.code === composite)?.action
 }
@@ -181,8 +181,7 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
           <h2>Keyboard</h2>
           <div><kbd>W</kbd><kbd>↑</kbd><span>Accelerate; release to hold speed</span></div>
           <div><kbd>S</kbd><kbd>↓</kbd><span>Brake; release to hold the new speed</span></div>
-          <div><kbd>A</kbd><kbd>D</kbd><span>Change lane</span></div>
-          <div><kbd>←</kbd><kbd>→</kbd><span>Turn when the intersection prompt appears</span></div>
+          <div><kbd>A / ←</kbd><kbd>D / →</kbd><span>Steer: change lane; repeat at the edge to turn when prompted</span></div>
           <div><kbd>,</kbd><kbd>.</kbd><span>Left / right signal</span></div>
           <div><kbd>Q</kbd><kbd>E</kbd><span>Left / right mirror</span></div>
           <div><kbd>⇧Q</kbd><kbd>⇧E</kbd><span>Left / right shoulder</span></div>
@@ -268,8 +267,10 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
-      const action = actionForKey(event, preferences)
+      let action = actionForKey(event, preferences)
       if (!action) return
+      if (action === 'lane-left' && canStartTurn(engineRef.current, 'turn-left')) action = 'turn-left'
+      if (action === 'lane-right' && canStartTurn(engineRef.current, 'turn-right')) action = 'turn-right'
       event.preventDefault()
       if (action === 'accelerate' || action === 'brake') controls.current.add(action)
       if (!event.repeat) perform(action)
@@ -437,7 +438,7 @@ function Settings({ preferences, update }: { preferences: Preferences; update: (
     const bindings = preferences.keyBindings.map((binding, current) => current === index ? { ...binding, code, label: event.shiftKey ? `Shift+${event.key.toUpperCase()}` : event.key.length === 1 ? event.key.toUpperCase() : event.key } : binding)
     set({ keyBindings: bindings })
   }
-  return <main id="main-content" className="page-shell settings-page"><p className="eyebrow">Accessibility & controls</p><h1>Settings</h1><section className="panel toggle-list"><label><span><strong>Spoken examiner instructions</strong><small>Uses the browser’s en-CA speech voice when available.</small></span><input type="checkbox" checked={preferences.speechEnabled} onChange={(event) => set({ speechEnabled: event.target.checked })} /></label><label><span><strong>Chinese subtitles</strong><small>English examiner wording remains primary.</small></span><input type="checkbox" checked={preferences.subtitlesZh} onChange={(event) => set({ subtitlesZh: event.target.checked })} /></label><label><span><strong>Reduced road motion</strong><small>Stops moving lane markers and lead-vehicle drift.</small></span><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => set({ reducedMotion: event.target.checked })} /></label><label><span><strong>High contrast</strong><small>Strengthens borders and text contrast throughout the interface.</small></span><input type="checkbox" checked={preferences.highContrast} onChange={(event) => set({ highContrast: event.target.checked })} /></label></section><section className="panel key-settings"><div className="section-heading"><div><h2>Keyboard mapping</h2><p>Focus a key button and press the replacement key. Arrow keys are reserved for speed and prompted intersection turns.</p>{conflict && <p className="form-error" role="alert">{conflict}</p>}</div><button className="secondary" onClick={() => { setConflict(''); set({ keyBindings: defaultPreferences.keyBindings }) }}>Reset</button></div>{preferences.keyBindings.map((binding, index) => <div key={binding.action}><span>{actionNames[binding.action]}</span><button disabled={binding.action === 'pause'} aria-label={`Remap ${actionNames[binding.action]}`} onKeyDown={(event) => remap(index, event)}>{binding.label}</button></div>)}</section></main>
+  return <main id="main-content" className="page-shell settings-page"><p className="eyebrow">Accessibility & controls</p><h1>Settings</h1><section className="panel toggle-list"><label><span><strong>Spoken examiner instructions</strong><small>Uses the browser’s en-CA speech voice when available.</small></span><input type="checkbox" checked={preferences.speechEnabled} onChange={(event) => set({ speechEnabled: event.target.checked })} /></label><label><span><strong>Chinese subtitles</strong><small>English examiner wording remains primary.</small></span><input type="checkbox" checked={preferences.subtitlesZh} onChange={(event) => set({ subtitlesZh: event.target.checked })} /></label><label><span><strong>Reduced road motion</strong><small>Stops moving lane markers and lead-vehicle drift.</small></span><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => set({ reducedMotion: event.target.checked })} /></label><label><span><strong>High contrast</strong><small>Strengthens borders and text contrast throughout the interface.</small></span><input type="checkbox" checked={preferences.highContrast} onChange={(event) => set({ highContrast: event.target.checked })} /></label></section><section className="panel key-settings"><div className="section-heading"><div><h2>Keyboard mapping</h2><p>Focus a key button and press the replacement key. Left/right arrows are permanent steering aliases for lane changes and prompted turns.</p>{conflict && <p className="form-error" role="alert">{conflict}</p>}</div><button className="secondary" onClick={() => { setConflict(''); set({ keyBindings: defaultPreferences.keyBindings }) }}>Reset</button></div>{preferences.keyBindings.map((binding, index) => <div key={binding.action}><span>{actionNames[binding.action]}</span><button disabled={binding.action === 'pause'} aria-label={`Remap ${actionNames[binding.action]}`} onKeyDown={(event) => remap(index, event)}>{binding.label}</button></div>)}</section></main>
 }
 
 export default function App() {
