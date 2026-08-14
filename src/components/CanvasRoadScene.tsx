@@ -175,18 +175,27 @@ function drawRoad(ctx: CanvasRenderingContext2D, camera: CameraPose, viewport: V
   }
 
   if (!hasIntersection) return
-  for (const edge of [INTERSECTION_DISTANCE_METERS - ROAD_HALF_WIDTH_METERS, INTERSECTION_DISTANCE_METERS + ROAD_HALF_WIDTH_METERS]) {
-    for (let x = -ROAD_VIEW_DISTANCE_METERS; x < ROAD_VIEW_DISTANCE_METERS; x += 12) worldLine(ctx, { x, z: edge }, { x: x + 12, z: edge }, camera, viewport, '#f4f1df', 0.15)
-  }
-  for (const divider of [INTERSECTION_DISTANCE_METERS - 1.8, INTERSECTION_DISTANCE_METERS + 1.8]) {
-    for (let x = -ROAD_VIEW_DISTANCE_METERS - dashOffset; x < ROAD_VIEW_DISTANCE_METERS; x += 14) worldLine(ctx, { x, z: divider }, { x: x + 7, z: divider }, camera, viewport, '#f5f1d3', 0.11)
-  }
-
   const stopZ = INTERSECTION_DISTANCE_METERS - INTERSECTION_HALF_DEPTH_METERS - 2
-  worldLine(ctx, { x: -ROAD_HALF_WIDTH_METERS, z: stopZ }, { x: ROAD_HALF_WIDTH_METERS, z: stopZ }, camera, viewport, '#ffffff', 0.35)
-  for (let x = -ROAD_HALF_WIDTH_METERS; x < ROAD_HALF_WIDTH_METERS; x += 1.8) {
-    worldLine(ctx, { x, z: stopZ - 2.4 }, { x: x + 1.1, z: stopZ - 2.4 }, camera, viewport, '#f8f6ec', 0.65)
-  }
+  const stopLineAhead = stopZ - camera.z
+  // At long range, transverse markings collapse into the same scanline and look
+  // like a white strip floating above the road. Keep the cross street surface
+  // visible, but introduce the stop bar only when it has enough projected depth.
+  if (stopLineAhead > 70 || stopLineAhead < 8) return
+
+  const markingOpacity = Math.min(1, Math.max(0, (70 - stopLineAhead) / 35))
+  ctx.save()
+  ctx.globalAlpha = markingOpacity
+
+  // The cross-street lane lines stop before the junction in the real world, so
+  // do not draw them through the intersection. The driver's stop bar is the
+  // only transverse white marking needed for this teaching scene.
+  projectPolygon(ctx, [
+    { x: -ROAD_HALF_WIDTH_METERS, z: stopZ - 0.22 },
+    { x: ROAD_HALF_WIDTH_METERS, z: stopZ - 0.22 },
+    { x: ROAD_HALF_WIDTH_METERS, z: stopZ + 0.22 },
+    { x: -ROAD_HALF_WIDTH_METERS, z: stopZ + 0.22 },
+  ], camera, viewport, '#ffffff')
+  ctx.restore()
 }
 
 function drawTrafficLight(ctx: CanvasRenderingContext2D, camera: CameraPose, viewport: Viewport, colour: 'red' | 'yellow' | 'green') {
