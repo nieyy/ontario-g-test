@@ -89,7 +89,7 @@ kbd { display: grid; place-items: center; min-height: 36px; border: 1px solid #c
 .drive-layout { display: flex; flex-direction: column; min-height: calc(100vh - 62px); padding: 10px 14px 14px; gap: 8px; }
 .scene-column { position: relative; min-height: 0; background: #0b1115; border: 2px solid #41515b; border-radius: 18px; overflow: hidden; display: grid; align-content: center; }
 .road-frame { position: relative; width: 100%; overflow: hidden; background: #131d23; }
-.road-scene { display: block; width: 100%; max-height: 58vh; }
+.road-scene { display: block; width: 100%; height: min(58vh, 540px); }
 .road-world { transform-box: view-box; transform-origin: 0 0; transition: transform .11s linear; }.steering-wheel { transform-box: view-box; transform-origin: 480px 489px; transition: transform .11s linear; }
 .mirror { position: absolute; top: 3%; width: 16%; height: 16%; border: 7px solid #131b20; border-radius: 12px 12px 38% 38%; background: linear-gradient(160deg,#9bc9df,#596c75); box-shadow: 0 5px 15px #0008; }.mirror b { position: absolute; left: -7px; right: -7px; top: -27px; height: 24px; padding-top: 4px; border-radius: 8px 8px 0 0; background: #131b20; color: #fff; text-align: center; font-size: clamp(.55rem, 1vw, .75rem); }.mirror span { display: block; margin-top: 50%; height: 3px; background: #d8e4e8aa; }.mirror-left { left: 2%; transform: rotate(-2deg); }.mirror-right { right: 2%; transform: rotate(2deg); }
 .mirror-checked { border-color: #f4c95d; box-shadow: 0 0 0 5px #f4c95d66, 0 5px 18px #0009; }
@@ -121,7 +121,7 @@ footer { max-width: 1120px; margin: auto; padding: 28px 24px 45px; border-top: 1
 @media (max-width: 900px) {
   .hero { margin: 10px 14px; padding: 45px 28px; grid-template-columns: 1fr; }.hero-visual { min-height: 330px; }.road-card { width: 320px; }
   .feature-grid { grid-template-columns: 1fr; margin: 20px 20px 70px; }.feature-grid article { padding: 14px; }
-  .drive-layout { min-height: 0; padding: 7px; }.road-scene { max-height: none; }.scene-column { min-height: 0; align-content: start; }
+  .drive-layout { min-height: 0; padding: 7px; }.road-scene { height: min(56.25vw, 540px); }.scene-column { min-height: 0; align-content: start; }
   .control-deck { grid-template-columns: 160px minmax(390px, 1fr) 190px; }
   .control-grid { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
   .control-tile { min-height: 58px; }

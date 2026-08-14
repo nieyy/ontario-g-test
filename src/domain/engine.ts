@@ -12,6 +12,7 @@ import type {
 
 export const TICK_SECONDS = 0.1
 export const INTERSECTION_DECISION_DISTANCE_METERS = 180
+export const INTERSECTION_TURN_EXIT_DISTANCE_METERS = 245
 export const LANE_CHANGE_DURATION_SECONDS = 0.9
 const TURN_DURATION_SECONDS = 1.4
 
@@ -30,6 +31,7 @@ export type EngineState = {
   signal: 'left' | 'right' | null
   turnDirection: 'left' | 'right' | null
   turnProgress: number
+  turnStartDistanceMeters: number | null
   stage: RunStage
   paused: boolean
   dangerPending: boolean
@@ -75,6 +77,7 @@ export function createEngine(seed: number, stage: RunStage = 'exam', onlyType?: 
     signal: null,
     turnDirection: null,
     turnProgress: 0,
+    turnStartDistanceMeters: null,
     stage,
     paused: false,
     dangerPending: false,
@@ -90,7 +93,12 @@ export function currentScenario(state: EngineState): ScenarioVariant {
 }
 
 export function canStartTurn(state: EngineState, type: 'turn-left' | 'turn-right'): boolean {
-  if (state.turnDirection || state.laneChangeFrom !== null || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS) return false
+  if (
+    state.turnDirection
+    || state.laneChangeFrom !== null
+    || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS
+    || state.scenarioDistanceMeters > INTERSECTION_TURN_EXIT_DISTANCE_METERS
+  ) return false
   const scenario = currentScenario(state)
   if (type === 'turn-right') return scenario.type === 'right-on-red' && state.lane === 1
   return scenario.type === 'multilane-left' && state.lane === -1
@@ -107,6 +115,7 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   let signal = state.signal
   let speedKph = state.speedKph
   let turnDirection = state.turnDirection
+  let turnStartDistanceMeters = state.turnStartDistanceMeters
 
   if (type === 'lane-left') lane = Math.max(-1, lane - 1) as -1 | 0 | 1
   if (type === 'lane-right') lane = Math.min(1, lane + 1) as -1 | 0 | 1
@@ -119,8 +128,14 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   if (type === 'signal-right') signal = signal === 'right' ? null : 'right'
   if (type === 'accelerate') speedKph = Math.min(120, speedKph + 3)
   if (type === 'brake') speedKph = Math.max(0, speedKph - 7)
-  if (type === 'turn-left') turnDirection = 'left'
-  if (type === 'turn-right') turnDirection = 'right'
+  if (type === 'turn-left') {
+    turnDirection = 'left'
+    turnStartDistanceMeters = state.scenarioDistanceMeters
+  }
+  if (type === 'turn-right') {
+    turnDirection = 'right'
+    turnStartDistanceMeters = state.scenarioDistanceMeters
+  }
 
   const action = { type, atSeconds: state.elapsed }
 
@@ -132,6 +147,7 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
     signal,
     speedKph,
     turnDirection,
+    turnStartDistanceMeters,
     actions: [...state.actions, action],
     scenarioActions: [...state.scenarioActions, action],
   }
@@ -240,6 +256,7 @@ function completeScenario(state: EngineState): EngineState {
     signal: null,
     turnDirection: null,
     turnProgress: 0,
+    turnStartDistanceMeters: null,
     paused: dangerPending,
     dangerPending,
     completed: isFinal && !dangerPending,

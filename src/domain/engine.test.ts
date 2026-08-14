@@ -87,6 +87,7 @@ describe('deterministic engine', () => {
 
     state = recordAction(state, 'turn-right')
     expect(state.turnDirection).toBe('right')
+    expect(state.turnStartDistanceMeters).toBe(180)
     expect(state.scenarioActions.at(-1)?.type).toBe('turn-right')
 
     state = advanceEngine(state, 0.7)
@@ -95,6 +96,14 @@ describe('deterministic engine', () => {
 
     state = advanceEngine(state, 0.7)
     expect(state.completed).toBe(true)
+  })
+
+  it('does not allow an intersection turn after the vehicle has passed it', () => {
+    let state = createEngine(22, 'practice', 'right-on-red')
+    state = recordAction(state, 'lane-right')
+    state = advanceEngine(state, 0.9)
+    state = { ...state, scenarioDistanceMeters: 246 }
+    expect(recordAction(state, 'turn-right')).toBe(state)
   })
 
   it('moves through a timed lane transition and rejects stacked steering', () => {
