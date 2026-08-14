@@ -82,19 +82,17 @@ export function currentScenario(state: EngineState): ScenarioVariant {
   return state.route[Math.min(state.scenarioIndex, state.route.length - 1)]
 }
 
-export function resolveDrivingAction(state: EngineState, type: ActionType): ActionType {
-  if (state.turnDirection || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS) return type
+export function canStartTurn(state: EngineState, type: 'turn-left' | 'turn-right'): boolean {
+  if (state.turnDirection || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS) return false
   const scenario = currentScenario(state)
-  if (type === 'lane-right' && scenario.type === 'right-on-red' && state.lane === 1) return 'turn-right'
-  if (type === 'lane-left' && scenario.type === 'multilane-left' && state.lane === -1) return 'turn-left'
-  return type
+  if (type === 'turn-right') return scenario.type === 'right-on-red' && state.lane === 1
+  return scenario.type === 'multilane-left' && state.lane === -1
 }
 
 export function recordAction(state: EngineState, type: ActionType): EngineState {
   if (state.completed || (state.paused && type !== 'pause')) return state
-
-  type = resolveDrivingAction(state, type)
-  if (state.turnDirection && (type === 'turn-left' || type === 'turn-right')) return state
+  if (state.turnDirection && (type.startsWith('lane-') || type.startsWith('turn-'))) return state
+  if ((type === 'turn-left' || type === 'turn-right') && !canStartTurn(state, type)) return state
 
   const action = { type, atSeconds: state.elapsed }
   let lane = state.lane

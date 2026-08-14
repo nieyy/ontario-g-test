@@ -69,13 +69,20 @@ describe('deterministic engine', () => {
     expect(state.completed).toBe(true)
   })
 
-  it('turns at the intersection instead of treating the direction key as another lane change', () => {
+  it('keeps lane changes separate from an explicit intersection turn', () => {
     let state = createEngine(14, 'practice', 'right-on-red')
     state = recordAction(state, 'lane-right')
     state = { ...state, scenarioDistanceMeters: 180 }
 
+    state = recordAction(state, 'lane-left')
+    expect(state.lane).toBe(0)
+    expect(state.turnDirection).toBe(null)
+
     state = recordAction(state, 'lane-right')
     expect(state.lane).toBe(1)
+    expect(state.turnDirection).toBe(null)
+
+    state = recordAction(state, 'turn-right')
     expect(state.turnDirection).toBe('right')
     expect(state.scenarioActions.at(-1)?.type).toBe('turn-right')
 

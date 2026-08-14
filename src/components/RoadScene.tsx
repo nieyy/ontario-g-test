@@ -55,11 +55,11 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
     ? `${laneCameraTransform} translate(${-turnSign * turnProgress * 330}px, ${turnProgress * 62}px) rotate(${-turnSign * turnProgress * 16}deg)`
     : laneCameraTransform
   const steeringAngle = turnDirection
-    ? turnSign * 52 * Math.sin(turnProgress * Math.PI)
+    ? -turnSign * 52 * Math.sin(turnProgress * Math.PI)
     : recentAction === 'lane-left'
-      ? -14
+      ? 14
       : recentAction === 'lane-right'
-        ? 14
+        ? -14
         : 0
   const feedbackLabel = recentAction === 'signal-left'
     ? `Left signal ${signal === 'left' ? 'on' : 'off'}`

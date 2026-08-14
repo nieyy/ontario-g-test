@@ -78,7 +78,7 @@ test('approaches the instructed intersection only while the vehicle moves', asyn
   await expect(page.getByText(/Intersection ahead|Intersection approaching|Decision zone/)).toBeVisible()
 })
 
-test('changes the right direction control into a turn at the intersection', async ({ page }) => {
+test('keeps lane controls available and uses a separate arrow-key turn command', async ({ page }) => {
   await page.goto('?debug=1&seed=47')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
@@ -88,6 +88,11 @@ test('changes the right direction control into a turn at the intersection', asyn
   await page.keyboard.down('ArrowUp')
   await expect(page.getByRole('button', { name: 'Turn right at the intersection' })).toBeVisible({ timeout: 2_000 })
   await page.keyboard.up('ArrowUp')
+
+  await page.keyboard.press('a')
+  await expect(page.getByRole('status')).toHaveText(/Moved one lane left.*Centre lane/)
+  await page.keyboard.press('d')
+  await expect(page.getByRole('status')).toHaveText(/Moved one lane right.*Right lane/)
 
   await page.keyboard.press('ArrowRight')
   await expect(page.getByText('Turning right through the intersection')).toBeVisible()
@@ -125,10 +130,12 @@ test.describe('mobile controls', () => {
     await expect(page.getByRole('status')).toHaveText(/Moved one lane right.*Right lane/)
     await expect(page.getByLabel('Current lane')).toHaveText(/Right/)
     await expect(page.getByTestId('lane-camera')).toHaveAttribute('style', /matrix\(1, 0, -1\.04, 1, 258, 0\)/)
+    await expect(page.locator('.steering-wheel')).toHaveAttribute('style', /rotate\(-14deg\)/)
     await page.waitForTimeout(950)
     await expect(page.locator('.steering-wheel')).toHaveAttribute('style', /rotate\(0deg\)/)
     await page.getByRole('button', { name: 'Move one lane left to Centre lane' }).click()
     await expect(page.getByRole('status')).toHaveText(/Moved one lane left.*Centre lane/)
     await expect(page.getByLabel('Current lane')).toHaveText(/Centre/)
+    await expect(page.locator('.steering-wheel')).toHaveAttribute('style', /rotate\(14deg\)/)
   })
 })

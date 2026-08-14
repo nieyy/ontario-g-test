@@ -11,11 +11,11 @@ import type {
 } from './content/types'
 import {
   advanceEngine,
+  canStartTurn,
   createEngine,
   currentScenario,
   INTERSECTION_DECISION_DISTANCE_METERS,
   recordAction,
-  resolveDrivingAction,
   resolveDanger,
   summarizeDimensions,
   TICK_SECONDS,
@@ -75,8 +75,8 @@ function actionForKey(event: KeyboardEvent, preferences: Preferences): ActionTyp
   const aliases: Record<string, ActionType> = {
     ArrowUp: 'accelerate',
     ArrowDown: 'brake',
-    ArrowLeft: 'lane-left',
-    ArrowRight: 'lane-right',
+    ArrowLeft: 'turn-left',
+    ArrowRight: 'turn-right',
   }
   return aliases[event.code] ?? preferences.keyBindings.find((binding) => binding.code === composite)?.action
 }
@@ -182,6 +182,7 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
           <div><kbd>W</kbd><kbd>↑</kbd><span>Accelerate; release to hold speed</span></div>
           <div><kbd>S</kbd><kbd>↓</kbd><span>Brake; release to hold the new speed</span></div>
           <div><kbd>A</kbd><kbd>D</kbd><span>Change lane</span></div>
+          <div><kbd>←</kbd><kbd>→</kbd><span>Turn when the intersection prompt appears</span></div>
           <div><kbd>,</kbd><kbd>.</kbd><span>Left / right signal</span></div>
           <div><kbd>Q</kbd><kbd>E</kbd><span>Left / right mirror</span></div>
           <div><kbd>⇧Q</kbd><kbd>⇧E</kbd><span>Left / right shoulder</span></div>
@@ -230,9 +231,10 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       setManualPaused((value) => !value)
       return
     }
-    const resolvedAction = resolveDrivingAction(engineRef.current, action)
+    if (engineRef.current.turnDirection && (action.startsWith('lane-') || action.startsWith('turn-'))) return
+    if ((action === 'turn-left' || action === 'turn-right') && !canStartTurn(engineRef.current, action)) return
     window.clearTimeout(feedbackTimer.current)
-    setRecentAction(resolvedAction)
+    setRecentAction(action)
     feedbackTimer.current = window.setTimeout(() => setRecentAction(null), 900)
     setEngine((state) => recordAction(state, action))
   }, [])
@@ -342,8 +344,10 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       <section className="drive-layout">
         <div className="scene-column">
           <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} turnDirection={engine.turnDirection} turnProgress={engine.turnProgress} reducedMotion={preferences.reducedMotion} />
-          <button className={`lane-target lane-target-left ${canTurnLeft ? 'turn-target' : ''}`} disabled={engine.turnDirection !== null || (engine.lane === -1 && !canTurnLeft)} onClick={() => perform('lane-left')} aria-label={canTurnLeft ? 'Turn left at the intersection' : `Move one lane left to ${leftLaneTarget} lane`}><span>{canTurnLeft ? '↰ TURN LEFT' : '← MOVE 1 LANE'}</span><small>{canTurnLeft ? 'at intersection' : `to ${leftLaneTarget}`}</small><kbd>{keyLabel('lane-left')}</kbd></button>
-          <button className={`lane-target lane-target-right ${canTurnRight ? 'turn-target' : ''}`} disabled={engine.turnDirection !== null || (engine.lane === 1 && !canTurnRight)} onClick={() => perform('lane-right')} aria-label={canTurnRight ? 'Turn right at the intersection' : `Move one lane right to ${rightLaneTarget} lane`}><span>{canTurnRight ? 'TURN RIGHT ↱' : 'MOVE 1 LANE →'}</span><small>{canTurnRight ? 'at intersection' : `to ${rightLaneTarget}`}</small><kbd>{keyLabel('lane-right')}</kbd></button>
+          <button className="lane-target lane-target-left" disabled={engine.turnDirection !== null || engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className="lane-target lane-target-right" disabled={engine.turnDirection !== null || engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
+          {inTurnZone && scenario.type === 'multilane-left' && <button className="turn-command turn-command-left" disabled={!canTurnLeft || engine.turnDirection !== null} onClick={() => perform('turn-left')} aria-label="Turn left at the intersection"><span>↰ TURN LEFT</span><small>{canTurnLeft ? 'turn now' : 'move to left lane first'}</small><kbd>←</kbd></button>}
+          {inTurnZone && scenario.type === 'right-on-red' && <button className="turn-command turn-command-right" disabled={!canTurnRight || engine.turnDirection !== null} onClick={() => perform('turn-right')} aria-label="Turn right at the intersection"><span>TURN RIGHT ↱</span><small>{canTurnRight ? 'turn now' : 'move to right lane first'}</small><kbd>→</kbd></button>}
           <div className="examiner-card" aria-live="polite">
             <span className="examiner-avatar" aria-hidden="true">EX</span>
             <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>
@@ -433,7 +437,7 @@ function Settings({ preferences, update }: { preferences: Preferences; update: (
     const bindings = preferences.keyBindings.map((binding, current) => current === index ? { ...binding, code, label: event.shiftKey ? `Shift+${event.key.toUpperCase()}` : event.key.length === 1 ? event.key.toUpperCase() : event.key } : binding)
     set({ keyBindings: bindings })
   }
-  return <main id="main-content" className="page-shell settings-page"><p className="eyebrow">Accessibility & controls</p><h1>Settings</h1><section className="panel toggle-list"><label><span><strong>Spoken examiner instructions</strong><small>Uses the browser’s en-CA speech voice when available.</small></span><input type="checkbox" checked={preferences.speechEnabled} onChange={(event) => set({ speechEnabled: event.target.checked })} /></label><label><span><strong>Chinese subtitles</strong><small>English examiner wording remains primary.</small></span><input type="checkbox" checked={preferences.subtitlesZh} onChange={(event) => set({ subtitlesZh: event.target.checked })} /></label><label><span><strong>Reduced road motion</strong><small>Stops moving lane markers and lead-vehicle drift.</small></span><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => set({ reducedMotion: event.target.checked })} /></label><label><span><strong>High contrast</strong><small>Strengthens borders and text contrast throughout the interface.</small></span><input type="checkbox" checked={preferences.highContrast} onChange={(event) => set({ highContrast: event.target.checked })} /></label></section><section className="panel key-settings"><div className="section-heading"><div><h2>Keyboard mapping</h2><p>Focus a key button and press the replacement key. Arrow keys remain fallback aliases.</p>{conflict && <p className="form-error" role="alert">{conflict}</p>}</div><button className="secondary" onClick={() => { setConflict(''); set({ keyBindings: defaultPreferences.keyBindings }) }}>Reset</button></div>{preferences.keyBindings.map((binding, index) => <div key={binding.action}><span>{actionNames[binding.action]}</span><button disabled={binding.action === 'pause'} aria-label={`Remap ${actionNames[binding.action]}`} onKeyDown={(event) => remap(index, event)}>{binding.label}</button></div>)}</section></main>
+  return <main id="main-content" className="page-shell settings-page"><p className="eyebrow">Accessibility & controls</p><h1>Settings</h1><section className="panel toggle-list"><label><span><strong>Spoken examiner instructions</strong><small>Uses the browser’s en-CA speech voice when available.</small></span><input type="checkbox" checked={preferences.speechEnabled} onChange={(event) => set({ speechEnabled: event.target.checked })} /></label><label><span><strong>Chinese subtitles</strong><small>English examiner wording remains primary.</small></span><input type="checkbox" checked={preferences.subtitlesZh} onChange={(event) => set({ subtitlesZh: event.target.checked })} /></label><label><span><strong>Reduced road motion</strong><small>Stops moving lane markers and lead-vehicle drift.</small></span><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => set({ reducedMotion: event.target.checked })} /></label><label><span><strong>High contrast</strong><small>Strengthens borders and text contrast throughout the interface.</small></span><input type="checkbox" checked={preferences.highContrast} onChange={(event) => set({ highContrast: event.target.checked })} /></label></section><section className="panel key-settings"><div className="section-heading"><div><h2>Keyboard mapping</h2><p>Focus a key button and press the replacement key. Arrow keys are reserved for speed and prompted intersection turns.</p>{conflict && <p className="form-error" role="alert">{conflict}</p>}</div><button className="secondary" onClick={() => { setConflict(''); set({ keyBindings: defaultPreferences.keyBindings }) }}>Reset</button></div>{preferences.keyBindings.map((binding, index) => <div key={binding.action}><span>{actionNames[binding.action]}</span><button disabled={binding.action === 'pause'} aria-label={`Remap ${actionNames[binding.action]}`} onKeyDown={(event) => remap(index, event)}>{binding.label}</button></div>)}</section></main>
 }
 
 export default function App() {
