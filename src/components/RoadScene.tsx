@@ -4,6 +4,9 @@ type Props = {
   scenario: ScenarioVariant
   speedKph: number
   lane: -1 | 0 | 1
+  lanePosition: number
+  laneChangeDirection: -1 | 0 | 1
+  laneChangeProgress: number
   signal: 'left' | 'right' | null
   recentAction: ActionType | null
   scenarioElapsed: number
@@ -20,7 +23,7 @@ const feedbackLabels: Partial<Record<ActionType, string>> = {
   'shoulder-right': 'Right shoulder checked',
 }
 
-export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, scenarioDistanceMeters, turnDirection, turnProgress, reducedMotion }: Props) {
+export function RoadScene({ scenario, speedKph, lane, lanePosition, laneChangeDirection, laneChangeProgress, signal, recentAction, scenarioElapsed, scenarioDistanceMeters, turnDirection, turnProgress, reducedMotion }: Props) {
   const phase = reducedMotion ? 0 : (scenarioElapsed * Math.max(speedKph, 8)) % 120
   const isFreeway = scenario.environment === 'freeway'
   const hasIntersection = ['right-on-red', 'yellow-light', 'multilane-left'].includes(scenario.type)
@@ -49,28 +52,33 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
   const leadY = 235 + Math.sin(scenarioElapsed / 5) * 8
   const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${hasIntersection ? `${intersectionStage}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
   const laneName = lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'
-  const laneCameraTransform = `matrix(1, 0, ${-lane * 1.04}, 1, ${lane * 258}, 0)`
+  const visualLanePosition = reducedMotion ? lane : lanePosition
+  const laneCameraTransform = `matrix(1, 0, ${(-visualLanePosition * 0.72).toFixed(3)}, 1, ${(visualLanePosition * 190).toFixed(1)}, 0)`
   const turnSign = turnDirection === 'right' ? 1 : turnDirection === 'left' ? -1 : 0
   const turnCameraTransform = turnDirection
     ? `${laneCameraTransform} translate(${-turnSign * turnProgress * 330}px, ${turnProgress * 62}px) rotate(${-turnSign * turnProgress * 16}deg)`
     : laneCameraTransform
+  const intersectionTurnTransform = turnDirection
+    ? `translate(${-turnSign * turnProgress * 330}px, ${turnProgress * 62}px) rotate(${-turnSign * turnProgress * 16}deg)`
+    : undefined
+  const laneSteeringAngle = reducedMotion || laneChangeDirection === 0
+    ? 0
+    : laneChangeDirection * 7 * Math.sin(laneChangeProgress * Math.PI * 2)
   const steeringAngle = turnDirection
     ? turnSign * 25 * Math.sin(turnProgress * Math.PI)
-    : 0
-  const steeringClass = [
-    'steering-wheel',
-    reducedMotion ? '' : 'steering-wheel-animated',
-    !reducedMotion && !turnDirection && recentAction === 'lane-left' ? 'steering-wheel-lane-left' : '',
-    !reducedMotion && !turnDirection && recentAction === 'lane-right' ? 'steering-wheel-lane-right' : '',
-  ].filter(Boolean).join(' ')
+    : laneSteeringAngle
+  const trafficLightScale = 0.65 + approachProgress * 0.55
+  const intersectionFarY = intersectionY - intersectionHeight / 2
+  const trafficLightX = 548 + approachProgress * 70 - visualLanePosition * 18
+  const trafficLightY = intersectionFarY - 171 * trafficLightScale
   const feedbackLabel = recentAction === 'signal-left'
     ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
     : recentAction === 'signal-right'
       ? `Right signal ${signal === 'right' ? 'on' : 'off'}`
       : recentAction === 'lane-left'
-        ? `Moved one lane left — now in ${laneName} lane`
+        ? `Changing one lane left — target ${laneName} lane`
         : recentAction === 'lane-right'
-          ? `Moved one lane right — now in ${laneName} lane`
+          ? `Changing one lane right — target ${laneName} lane`
           : recentAction === 'turn-left'
             ? 'Turning left through the intersection'
             : recentAction === 'turn-right'
@@ -114,7 +122,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           </g>
         )}
 
-        <g className={reducedMotion ? 'road-world' : 'road-world road-world-animated'} data-testid="lane-camera" data-turn-progress={turnProgress.toFixed(2)} style={{ transform: turnCameraTransform, transformOrigin: '480px 430px' }}>
+        <g className="road-world" data-testid="lane-camera" data-lane-position={visualLanePosition.toFixed(2)} data-turn-progress={turnProgress.toFixed(2)} style={{ transform: turnCameraTransform, transformOrigin: '480px 430px' }}>
         <path d="M365 248 L595 248 L960 540 L0 540Z" fill="url(#road)" />
         <path d="M365 248 L0 540" stroke="#f4f1df" strokeWidth="8" />
         <path d="M595 248 L960 540" stroke="#f4f1df" strokeWidth="8" />
@@ -136,9 +144,10 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
             </g>
           )
         })}
+        </g>
 
         {hasIntersection && (
-          <g data-testid="approaching-intersection" data-approach={approachProgress.toFixed(2)} aria-hidden="true">
+          <g data-testid="approaching-intersection" data-approach={approachProgress.toFixed(2)} data-far-edge={intersectionFarY.toFixed(1)} aria-hidden="true" style={{ transform: intersectionTurnTransform, transformOrigin: '480px 430px' }}>
             <rect x="-120" y={intersectionY - intersectionHeight / 2} width="1200" height={intersectionHeight} fill="#343c41" />
             <path d={`M-120 ${intersectionY - intersectionHeight / 2} H${farRoadLeft} M${farRoadRight} ${intersectionY - intersectionHeight / 2} H1080`} stroke="#d9d2bf" strokeWidth={4 + approachProgress * 5} />
             <path d={`M-120 ${intersectionY + intersectionHeight / 2} H${nearRoadLeft} M${nearRoadRight} ${intersectionY + intersectionHeight / 2} H1080`} stroke="#d9d2bf" strokeWidth={4 + approachProgress * 5} />
@@ -155,7 +164,6 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
             </g>
           </g>
         )}
-        </g>
 
         {(scenario.type === 'slow-lead' || scenario.type === 'freeway-merge') && (
           <g transform={`translate(0 ${leadY})`} aria-hidden="true">
@@ -169,7 +177,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         )}
 
         {scenario.trafficLight && (
-          <g aria-hidden="true" transform={`translate(${548 + approachProgress * 86 - lane * (18 + approachProgress * 55)} ${85 + approachProgress * 48}) scale(${0.7 + approachProgress * 0.5})`}>
+          <g data-testid="traffic-light" data-pole-base={intersectionFarY.toFixed(1)} aria-hidden="true" transform={`translate(${trafficLightX} ${trafficLightY}) scale(${trafficLightScale})`}>
             <rect x="28" y="7" width="10" height="164" fill="#333b40" />
             <rect width="66" height="116" rx="9" fill="#22292e" />
             {(['red', 'yellow', 'green'] as const).map((colour, index) => (
@@ -185,7 +193,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         )}
 
         <path d="M172 540 C240 422 335 386 480 386 C625 386 720 422 788 540Z" fill="#172129" />
-        <g className={steeringClass} style={{ transform: `rotate(${steeringAngle}deg)` }}>
+        <g className="steering-wheel" data-angle={steeringAngle.toFixed(1)} style={{ transform: `rotate(${steeringAngle}deg)` }}>
         <path d="M338 540 C355 459 398 423 480 423 C562 423 605 459 622 540Z" fill="#0b1014" stroke="#34444e" strokeWidth="8" />
         <circle cx="480" cy="489" r="43" fill="#25333d" stroke="#52636d" strokeWidth="9" />
         </g>

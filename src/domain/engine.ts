@@ -12,6 +12,7 @@ import type {
 
 export const TICK_SECONDS = 0.1
 export const INTERSECTION_DECISION_DISTANCE_METERS = 180
+export const LANE_CHANGE_DURATION_SECONDS = 0.9
 const TURN_DURATION_SECONDS = 1.4
 
 export type EngineState = {
@@ -23,6 +24,9 @@ export type EngineState = {
   elapsed: number
   speedKph: number
   lane: -1 | 0 | 1
+  lanePosition: number
+  laneChangeFrom: number | null
+  laneChangeElapsed: number
   signal: 'left' | 'right' | null
   turnDirection: 'left' | 'right' | null
   turnProgress: number
@@ -65,6 +69,9 @@ export function createEngine(seed: number, stage: RunStage = 'exam', onlyType?: 
     elapsed: 0,
     speedKph: 0,
     lane: 0,
+    lanePosition: 0,
+    laneChangeFrom: null,
+    laneChangeElapsed: 0,
     signal: null,
     turnDirection: null,
     turnProgress: 0,
@@ -83,7 +90,7 @@ export function currentScenario(state: EngineState): ScenarioVariant {
 }
 
 export function canStartTurn(state: EngineState, type: 'turn-left' | 'turn-right'): boolean {
-  if (state.turnDirection || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS) return false
+  if (state.turnDirection || state.laneChangeFrom !== null || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS) return false
   const scenario = currentScenario(state)
   if (type === 'turn-right') return scenario.type === 'right-on-red' && state.lane === 1
   return scenario.type === 'multilane-left' && state.lane === -1
@@ -91,17 +98,23 @@ export function canStartTurn(state: EngineState, type: 'turn-left' | 'turn-right
 
 export function recordAction(state: EngineState, type: ActionType): EngineState {
   if (state.completed || (state.paused && type !== 'pause')) return state
-  if (state.turnDirection && (type.startsWith('lane-') || type.startsWith('turn-'))) return state
+  if ((state.turnDirection || state.laneChangeFrom !== null) && (type.startsWith('lane-') || type.startsWith('turn-'))) return state
   if ((type === 'turn-left' || type === 'turn-right') && !canStartTurn(state, type)) return state
 
-  const action = { type, atSeconds: state.elapsed }
   let lane = state.lane
+  let laneChangeFrom = state.laneChangeFrom
+  let laneChangeElapsed = state.laneChangeElapsed
   let signal = state.signal
   let speedKph = state.speedKph
   let turnDirection = state.turnDirection
 
   if (type === 'lane-left') lane = Math.max(-1, lane - 1) as -1 | 0 | 1
   if (type === 'lane-right') lane = Math.min(1, lane + 1) as -1 | 0 | 1
+  if (type.startsWith('lane-') && lane === state.lane) return state
+  if (lane !== state.lane) {
+    laneChangeFrom = state.lanePosition
+    laneChangeElapsed = 0
+  }
   if (type === 'signal-left') signal = signal === 'left' ? null : 'left'
   if (type === 'signal-right') signal = signal === 'right' ? null : 'right'
   if (type === 'accelerate') speedKph = Math.min(120, speedKph + 3)
@@ -109,9 +122,13 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   if (type === 'turn-left') turnDirection = 'left'
   if (type === 'turn-right') turnDirection = 'right'
 
+  const action = { type, atSeconds: state.elapsed }
+
   return {
     ...state,
     lane,
+    laneChangeFrom,
+    laneChangeElapsed,
     signal,
     speedKph,
     turnDirection,
@@ -217,6 +234,9 @@ function completeScenario(state: EngineState): EngineState {
     scenarioDistanceMeters: 0,
     scenarioActions: [],
     lane: 0,
+    lanePosition: 0,
+    laneChangeFrom: null,
+    laneChangeElapsed: 0,
     signal: null,
     turnDirection: null,
     turnProgress: 0,
@@ -245,6 +265,17 @@ export function advanceEngine(
   const nextTurnProgress = state.turnDirection
     ? Math.min(1, state.turnProgress + seconds / TURN_DURATION_SECONDS)
     : 0
+  const nextLaneChangeElapsed = state.laneChangeFrom === null
+    ? 0
+    : Math.min(LANE_CHANGE_DURATION_SECONDS, state.laneChangeElapsed + seconds)
+  const laneChangeProgress = state.laneChangeFrom === null
+    ? 1
+    : nextLaneChangeElapsed / LANE_CHANGE_DURATION_SECONDS
+  const easedLaneProgress = laneChangeProgress * laneChangeProgress * (3 - 2 * laneChangeProgress)
+  const nextLanePosition = state.laneChangeFrom === null
+    ? state.lanePosition
+    : state.laneChangeFrom + (state.lane - state.laneChangeFrom) * easedLaneProgress
+  const laneChangeComplete = state.laneChangeFrom !== null && laneChangeProgress >= 1
   const updated: EngineState = {
     ...state,
     speedKph: nextSpeed,
@@ -252,6 +283,9 @@ export function advanceEngine(
     scenarioElapsed: nextElapsed,
     scenarioDistanceMeters: nextDistance,
     turnProgress: nextTurnProgress,
+    lanePosition: laneChangeComplete ? state.lane : nextLanePosition,
+    laneChangeFrom: laneChangeComplete ? null : state.laneChangeFrom,
+    laneChangeElapsed: laneChangeComplete ? 0 : nextLaneChangeElapsed,
   }
 
   if (state.turnDirection && nextTurnProgress >= 1) return completeScenario(updated)

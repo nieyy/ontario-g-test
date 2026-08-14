@@ -15,6 +15,7 @@ import {
   createEngine,
   currentScenario,
   INTERSECTION_DECISION_DISTANCE_METERS,
+  LANE_CHANGE_DURATION_SECONDS,
   recordAction,
   resolveDanger,
   summarizeDimensions,
@@ -209,6 +210,9 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
     ? {
         ...checkpoint.state,
         scenarioDistanceMeters: checkpoint.state.scenarioDistanceMeters ?? 0,
+        lanePosition: checkpoint.state.lanePosition ?? checkpoint.state.lane ?? 0,
+        laneChangeFrom: checkpoint.state.laneChangeFrom ?? null,
+        laneChangeElapsed: checkpoint.state.laneChangeElapsed ?? 0,
         turnDirection: checkpoint.state.turnDirection ?? null,
         turnProgress: checkpoint.state.turnProgress ?? 0,
       }
@@ -230,7 +234,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       setManualPaused((value) => !value)
       return
     }
-    if (engineRef.current.turnDirection && (action.startsWith('lane-') || action.startsWith('turn-'))) return
+    if ((engineRef.current.turnDirection || engineRef.current.laneChangeFrom !== null) && (action.startsWith('lane-') || action.startsWith('turn-'))) return
     if ((action === 'turn-left' || action === 'turn-right') && !canStartTurn(engineRef.current, action)) return
     window.clearTimeout(feedbackTimer.current)
     setRecentAction(action)
@@ -327,6 +331,13 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
   const inTurnZone = engine.scenarioDistanceMeters >= INTERSECTION_DECISION_DISTANCE_METERS
   const canTurnLeft = inTurnZone && scenario.type === 'multilane-left' && engine.lane === -1
   const canTurnRight = inTurnZone && scenario.type === 'right-on-red' && engine.lane === 1
+  const laneChanging = engine.laneChangeFrom !== null
+  const laneChangeDirection = laneChanging
+    ? Math.sign(engine.lane - engine.laneChangeFrom!) as -1 | 1
+    : 0
+  const laneChangeProgress = laneChanging
+    ? Math.min(1, engine.laneChangeElapsed / LANE_CHANGE_DURATION_SECONDS)
+    : 1
   const keyLabel = (action: ActionType) => preferences.keyBindings.find((binding) => binding.action === action)?.label ?? '—'
   const controlClass = (action: ActionType, active = false) => [
     'control-tile',
@@ -344,11 +355,11 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
-          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} turnDirection={engine.turnDirection} turnProgress={engine.turnProgress} reducedMotion={preferences.reducedMotion} />
-          <button className="lane-target lane-target-left" disabled={engine.turnDirection !== null || engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
-          <button className="lane-target lane-target-right" disabled={engine.turnDirection !== null || engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
-          {inTurnZone && scenario.type === 'multilane-left' && <button className="turn-command turn-command-left" disabled={!canTurnLeft || engine.turnDirection !== null} onClick={() => perform('turn-left')} aria-label="Turn left at the intersection"><span>↰ TURN LEFT</span><small>{canTurnLeft ? 'turn now' : 'move to left lane first'}</small><kbd>←</kbd></button>}
-          {inTurnZone && scenario.type === 'right-on-red' && <button className="turn-command turn-command-right" disabled={!canTurnRight || engine.turnDirection !== null} onClick={() => perform('turn-right')} aria-label="Turn right at the intersection"><span>TURN RIGHT ↱</span><small>{canTurnRight ? 'turn now' : 'move to right lane first'}</small><kbd>→</kbd></button>}
+          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} lanePosition={engine.lanePosition} laneChangeDirection={laneChangeDirection} laneChangeProgress={laneChangeProgress} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} turnDirection={engine.turnDirection} turnProgress={engine.turnProgress} reducedMotion={preferences.reducedMotion} />
+          <button className="lane-target lane-target-left" disabled={engine.turnDirection !== null || laneChanging || engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className="lane-target lane-target-right" disabled={engine.turnDirection !== null || laneChanging || engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
+          {inTurnZone && scenario.type === 'multilane-left' && <button className="turn-command turn-command-left" disabled={!canTurnLeft || laneChanging || engine.turnDirection !== null} onClick={() => perform('turn-left')} aria-label="Turn left at the intersection"><span>↰ TURN LEFT</span><small>{canTurnLeft && !laneChanging ? 'turn now' : 'move to left lane first'}</small><kbd>←</kbd></button>}
+          {inTurnZone && scenario.type === 'right-on-red' && <button className="turn-command turn-command-right" disabled={!canTurnRight || laneChanging || engine.turnDirection !== null} onClick={() => perform('turn-right')} aria-label="Turn right at the intersection"><span>TURN RIGHT ↱</span><small>{canTurnRight && !laneChanging ? 'turn now' : 'move to right lane first'}</small><kbd>→</kbd></button>}
           <div className="examiner-card" aria-live="polite">
             <span className="examiner-avatar" aria-hidden="true">EX</span>
             <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>
