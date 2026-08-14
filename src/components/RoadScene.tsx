@@ -8,6 +8,8 @@ type Props = {
   recentAction: ActionType | null
   scenarioElapsed: number
   scenarioDistanceMeters: number
+  turnDirection: 'left' | 'right' | null
+  turnProgress: number
   reducedMotion: boolean
 }
 
@@ -18,15 +20,15 @@ const feedbackLabels: Partial<Record<ActionType, string>> = {
   'shoulder-right': 'Right shoulder checked',
 }
 
-export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, scenarioDistanceMeters, reducedMotion }: Props) {
+export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scenarioElapsed, scenarioDistanceMeters, turnDirection, turnProgress, reducedMotion }: Props) {
   const phase = reducedMotion ? 0 : (scenarioElapsed * Math.max(speedKph, 8)) % 120
   const isFreeway = scenario.environment === 'freeway'
   const hasIntersection = ['right-on-red', 'yellow-light', 'multilane-left'].includes(scenario.type)
   const approachProgress = hasIntersection
-    ? Math.min(0.9, scenarioDistanceMeters / 280)
+    ? Math.min(1, scenarioDistanceMeters / 230)
     : 0
-  const intersectionY = 260 + approachProgress * 160
-  const intersectionHeight = 22 + approachProgress * 84
+  const intersectionY = 250 + approachProgress * 208
+  const intersectionHeight = 8 + Math.pow(approachProgress, 1.45) * 122
   const stopLineY = intersectionY + intersectionHeight / 2 + 9
   const roadPerspective = Math.max(0, (stopLineY - 248) / 292)
   const stopLineLeft = 365 - roadPerspective * 365
@@ -37,12 +39,28 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
   const farRoadRight = 595 + farRoadPerspective * 365
   const nearRoadLeft = 365 - nearRoadPerspective * 365
   const nearRoadRight = 595 + nearRoadPerspective * 365
-  const intersectionStage = approachProgress >= 0.72 ? 'Decision zone' : approachProgress >= 0.32 ? 'Intersection approaching' : 'Intersection ahead'
+  const intersectionStage = turnDirection
+    ? `Turning ${turnDirection}`
+    : approachProgress >= 0.78
+      ? 'Decision zone'
+      : approachProgress >= 0.32
+        ? 'Intersection approaching'
+        : 'Intersection ahead'
   const leadY = 235 + Math.sin(scenarioElapsed / 5) * 8
   const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${hasIntersection ? `${intersectionStage}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
   const laneName = lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'
   const laneCameraTransform = `matrix(1, 0, ${-lane * 1.04}, 1, ${lane * 258}, 0)`
-  const steeringAngle = recentAction === 'lane-left' ? -14 : recentAction === 'lane-right' ? 14 : 0
+  const turnSign = turnDirection === 'right' ? 1 : turnDirection === 'left' ? -1 : 0
+  const turnCameraTransform = turnDirection
+    ? `${laneCameraTransform} translate(${-turnSign * turnProgress * 330}px, ${turnProgress * 62}px) rotate(${-turnSign * turnProgress * 16}deg)`
+    : laneCameraTransform
+  const steeringAngle = turnDirection
+    ? turnSign * 52 * Math.sin(turnProgress * Math.PI)
+    : recentAction === 'lane-left'
+      ? -14
+      : recentAction === 'lane-right'
+        ? 14
+        : 0
   const feedbackLabel = recentAction === 'signal-left'
     ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
     : recentAction === 'signal-right'
@@ -51,6 +69,10 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
         ? `Moved one lane left — now in ${laneName} lane`
         : recentAction === 'lane-right'
           ? `Moved one lane right — now in ${laneName} lane`
+          : recentAction === 'turn-left'
+            ? 'Turning left through the intersection'
+            : recentAction === 'turn-right'
+              ? 'Turning right through the intersection'
           : recentAction
         ? feedbackLabels[recentAction]
         : undefined
@@ -90,7 +112,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           </g>
         )}
 
-        <g className={reducedMotion ? 'road-world' : 'road-world road-world-animated'} data-testid="lane-camera" style={{ transform: laneCameraTransform }}>
+        <g className={reducedMotion ? 'road-world' : 'road-world road-world-animated'} data-testid="lane-camera" data-turn-progress={turnProgress.toFixed(2)} style={{ transform: turnCameraTransform, transformOrigin: '480px 430px' }}>
         <path d="M365 248 L595 248 L960 540 L0 540Z" fill="url(#road)" />
         <path d="M365 248 L0 540" stroke="#f4f1df" strokeWidth="8" />
         <path d="M595 248 L960 540" stroke="#f4f1df" strokeWidth="8" />
@@ -179,7 +201,7 @@ export function RoadScene({ scenario, speedKph, lane, signal, recentAction, scen
           <span key={name} className={lane === index - 1 ? 'current' : ''}><i aria-hidden="true">▲</i>{name}</span>
         ))}
       </div>
-      {hasIntersection && <div className={`scene-event ${approachProgress >= 0.72 ? 'decision' : ''}`} aria-live="polite"><strong>{intersectionStage}</strong><span>{approachProgress >= 0.72 ? 'Scan · choose · act' : 'Watch the signal and road markings'}</span></div>}
+      {hasIntersection && <div className={`scene-event ${approachProgress >= 0.78 ? 'decision' : ''}`} aria-live="polite"><strong>{intersectionStage}</strong><span>{turnDirection ? 'Steer through · enter the new road' : approachProgress >= 0.78 ? 'Correct lane · slow down · turn' : 'Watch the signal and road markings'}</span></div>}
       {recentAction && feedbackLabel && (
         <div className={`action-feedback feedback-${recentAction}`} role="status">
           <span>{recentAction.includes('left') ? '←' : '→'}</span>{feedbackLabel}

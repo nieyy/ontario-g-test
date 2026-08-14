@@ -13,7 +13,9 @@ import {
   advanceEngine,
   createEngine,
   currentScenario,
+  INTERSECTION_DECISION_DISTANCE_METERS,
   recordAction,
+  resolveDrivingAction,
   resolveDanger,
   summarizeDimensions,
   TICK_SECONDS,
@@ -53,6 +55,8 @@ const actionNames: Record<ActionType, string> = {
   'shoulder-right': 'Right shoulder',
   'lane-left': 'Move left',
   'lane-right': 'Move right',
+  'turn-left': 'Turn left',
+  'turn-right': 'Turn right',
   pause: 'Pause',
 }
 
@@ -202,7 +206,12 @@ type PlayerProps = {
 
 function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLockConflict }: PlayerProps) {
   const [engine, setEngine] = useState<EngineState>(() => checkpoint
-    ? { ...checkpoint.state, scenarioDistanceMeters: checkpoint.state.scenarioDistanceMeters ?? 0 }
+    ? {
+        ...checkpoint.state,
+        scenarioDistanceMeters: checkpoint.state.scenarioDistanceMeters ?? 0,
+        turnDirection: checkpoint.state.turnDirection ?? null,
+        turnProgress: checkpoint.state.turnProgress ?? 0,
+      }
     : createEngine(seedFromUrl(), practiceType ? 'practice' : 'exam', practiceType))
   const [manualPaused, setManualPaused] = useState(false)
   const [recentAction, setRecentAction] = useState<ActionType | null>(null)
@@ -221,8 +230,9 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       setManualPaused((value) => !value)
       return
     }
+    const resolvedAction = resolveDrivingAction(engineRef.current, action)
     window.clearTimeout(feedbackTimer.current)
-    setRecentAction(action)
+    setRecentAction(resolvedAction)
     feedbackTimer.current = window.setTimeout(() => setRecentAction(null), 900)
     setEngine((state) => recordAction(state, action))
   }, [])
@@ -311,6 +321,9 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
   const checklist = new Set(engine.scenarioActions.map((action) => action.type))
   const leftLaneTarget = engine.lane === 1 ? 'Centre' : 'Left'
   const rightLaneTarget = engine.lane === -1 ? 'Centre' : 'Right'
+  const inTurnZone = engine.scenarioDistanceMeters >= INTERSECTION_DECISION_DISTANCE_METERS
+  const canTurnLeft = inTurnZone && scenario.type === 'multilane-left' && engine.lane === -1
+  const canTurnRight = inTurnZone && scenario.type === 'right-on-red' && engine.lane === 1
   const keyLabel = (action: ActionType) => preferences.keyBindings.find((binding) => binding.action === action)?.label ?? '—'
   const controlClass = (action: ActionType, active = false) => [
     'control-tile',
@@ -328,9 +341,9 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
-          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} reducedMotion={preferences.reducedMotion} />
-          <button className="lane-target lane-target-left" disabled={engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
-          <button className="lane-target lane-target-right" disabled={engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
+          <RoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} turnDirection={engine.turnDirection} turnProgress={engine.turnProgress} reducedMotion={preferences.reducedMotion} />
+          <button className={`lane-target lane-target-left ${canTurnLeft ? 'turn-target' : ''}`} disabled={engine.turnDirection !== null || (engine.lane === -1 && !canTurnLeft)} onClick={() => perform('lane-left')} aria-label={canTurnLeft ? 'Turn left at the intersection' : `Move one lane left to ${leftLaneTarget} lane`}><span>{canTurnLeft ? '↰ TURN LEFT' : '← MOVE 1 LANE'}</span><small>{canTurnLeft ? 'at intersection' : `to ${leftLaneTarget}`}</small><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className={`lane-target lane-target-right ${canTurnRight ? 'turn-target' : ''}`} disabled={engine.turnDirection !== null || (engine.lane === 1 && !canTurnRight)} onClick={() => perform('lane-right')} aria-label={canTurnRight ? 'Turn right at the intersection' : `Move one lane right to ${rightLaneTarget} lane`}><span>{canTurnRight ? 'TURN RIGHT ↱' : 'MOVE 1 LANE →'}</span><small>{canTurnRight ? 'at intersection' : `to ${rightLaneTarget}`}</small><kbd>{keyLabel('lane-right')}</kbd></button>
           <div className="examiner-card" aria-live="polite">
             <span className="examiner-avatar" aria-hidden="true">EX</span>
             <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>

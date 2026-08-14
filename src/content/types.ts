@@ -60,6 +60,8 @@ export type ActionType =
   | 'shoulder-right'
   | 'lane-left'
   | 'lane-right'
+  | 'turn-left'
+  | 'turn-right'
   | 'pause'
 
 export type InputAction = {

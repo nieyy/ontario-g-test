@@ -11,6 +11,8 @@ import type {
 } from '../content/types'
 
 export const TICK_SECONDS = 0.1
+export const INTERSECTION_DECISION_DISTANCE_METERS = 180
+const TURN_DURATION_SECONDS = 1.4
 
 export type EngineState = {
   seed: number
@@ -22,6 +24,8 @@ export type EngineState = {
   speedKph: number
   lane: -1 | 0 | 1
   signal: 'left' | 'right' | null
+  turnDirection: 'left' | 'right' | null
+  turnProgress: number
   stage: RunStage
   paused: boolean
   dangerPending: boolean
@@ -62,6 +66,8 @@ export function createEngine(seed: number, stage: RunStage = 'exam', onlyType?: 
     speedKph: 0,
     lane: 0,
     signal: null,
+    turnDirection: null,
+    turnProgress: 0,
     stage,
     paused: false,
     dangerPending: false,
@@ -76,13 +82,25 @@ export function currentScenario(state: EngineState): ScenarioVariant {
   return state.route[Math.min(state.scenarioIndex, state.route.length - 1)]
 }
 
+export function resolveDrivingAction(state: EngineState, type: ActionType): ActionType {
+  if (state.turnDirection || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS) return type
+  const scenario = currentScenario(state)
+  if (type === 'lane-right' && scenario.type === 'right-on-red' && state.lane === 1) return 'turn-right'
+  if (type === 'lane-left' && scenario.type === 'multilane-left' && state.lane === -1) return 'turn-left'
+  return type
+}
+
 export function recordAction(state: EngineState, type: ActionType): EngineState {
   if (state.completed || (state.paused && type !== 'pause')) return state
+
+  type = resolveDrivingAction(state, type)
+  if (state.turnDirection && (type === 'turn-left' || type === 'turn-right')) return state
 
   const action = { type, atSeconds: state.elapsed }
   let lane = state.lane
   let signal = state.signal
   let speedKph = state.speedKph
+  let turnDirection = state.turnDirection
 
   if (type === 'lane-left') lane = Math.max(-1, lane - 1) as -1 | 0 | 1
   if (type === 'lane-right') lane = Math.min(1, lane + 1) as -1 | 0 | 1
@@ -90,12 +108,15 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   if (type === 'signal-right') signal = signal === 'right' ? null : 'right'
   if (type === 'accelerate') speedKph = Math.min(120, speedKph + 3)
   if (type === 'brake') speedKph = Math.max(0, speedKph - 7)
+  if (type === 'turn-left') turnDirection = 'left'
+  if (type === 'turn-right') turnDirection = 'right'
 
   return {
     ...state,
     lane,
     signal,
     speedKph,
+    turnDirection,
     actions: [...state.actions, action],
     scenarioActions: [...state.scenarioActions, action],
   }
@@ -118,6 +139,8 @@ const actionLabels: Partial<Record<ActionType, string>> = {
   'shoulder-right': 'right blind-spot check',
   'lane-left': 'left lane movement',
   'lane-right': 'right lane movement',
+  'turn-left': 'left turn',
+  'turn-right': 'right turn',
   accelerate: 'acceleration to traffic speed',
   brake: 'controlled braking',
 }
@@ -183,6 +206,28 @@ function evaluateScenario(state: EngineState): Finding[] {
   return findings
 }
 
+function completeScenario(state: EngineState): EngineState {
+  const findings = evaluateScenario(state)
+  const dangerPending = state.stage === 'exam' && findings.some((finding) => finding.severity === 'dangerous')
+  const isFinal = state.scenarioIndex >= state.route.length - 1
+
+  return {
+    ...state,
+    findings: [...state.findings, ...findings],
+    scenarioIndex: isFinal ? state.scenarioIndex : state.scenarioIndex + 1,
+    scenarioElapsed: 0,
+    scenarioDistanceMeters: 0,
+    scenarioActions: [],
+    lane: 0,
+    signal: null,
+    turnDirection: null,
+    turnProgress: 0,
+    paused: dangerPending,
+    dangerPending,
+    completed: isFinal && !dangerPending,
+  }
+}
+
 export function advanceEngine(
   state: EngineState,
   seconds: number,
@@ -199,36 +244,22 @@ export function advanceEngine(
   const nextElapsed = state.scenarioElapsed + seconds
   const currentDistance = state.scenarioDistanceMeters ?? 0
   const nextDistance = currentDistance + ((state.speedKph + nextSpeed) / 2 / 3.6) * seconds
+  const nextTurnProgress = state.turnDirection
+    ? Math.min(1, state.turnProgress + seconds / TURN_DURATION_SECONDS)
+    : 0
   const updated: EngineState = {
     ...state,
     speedKph: nextSpeed,
     elapsed: state.elapsed + seconds,
     scenarioElapsed: nextElapsed,
     scenarioDistanceMeters: nextDistance,
+    turnProgress: nextTurnProgress,
   }
+
+  if (state.turnDirection && nextTurnProgress >= 1) return completeScenario(updated)
 
   if (nextElapsed + 1e-9 < scenario.durationSeconds) return updated
-
-  const findings = evaluateScenario(updated)
-  const dangerPending = state.stage === 'exam' && findings.some((finding) => finding.severity === 'dangerous')
-  const isFinal = state.scenarioIndex >= state.route.length - 1
-
-  return {
-    ...updated,
-    findings: [...state.findings, ...findings],
-    scenarioIndex: isFinal ? state.scenarioIndex : state.scenarioIndex + 1,
-    scenarioElapsed: 0,
-    scenarioDistanceMeters: 0,
-    scenarioActions: [],
-    // Each authored vignette begins with the vehicle centred in its own
-    // three-lane road model. Carrying a lane edge into the next vignette can
-    // make that scene's required merge direction impossible to select.
-    lane: 0,
-    signal: null,
-    paused: dangerPending,
-    dangerPending,
-    completed: isFinal && !dangerPending,
-  }
+  return completeScenario(updated)
 }
 
 export function resolveDanger(state: EngineState, choice: 'end' | 'continue'): EngineState {

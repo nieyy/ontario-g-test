@@ -69,6 +69,24 @@ describe('deterministic engine', () => {
     expect(state.completed).toBe(true)
   })
 
+  it('turns at the intersection instead of treating the direction key as another lane change', () => {
+    let state = createEngine(14, 'practice', 'right-on-red')
+    state = recordAction(state, 'lane-right')
+    state = { ...state, scenarioDistanceMeters: 180 }
+
+    state = recordAction(state, 'lane-right')
+    expect(state.lane).toBe(1)
+    expect(state.turnDirection).toBe('right')
+    expect(state.scenarioActions.at(-1)?.type).toBe('turn-right')
+
+    state = advanceEngine(state, 0.7)
+    expect(state.turnProgress).toBeCloseTo(0.5)
+    expect(state.completed).toBe(false)
+
+    state = advanceEngine(state, 0.7)
+    expect(state.completed).toBe(true)
+  })
+
   it('centres the vehicle when a new authored road scene begins', () => {
     let state = createEngine(19, 'practice')
     state = recordAction(state, 'lane-left')

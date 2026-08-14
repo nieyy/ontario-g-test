@@ -69,7 +69,7 @@ export const newmarketCentre: CentreProfile = {
       'urban',
       50,
       28,
-      ['signal-right', 'mirror-right', 'shoulder-right', 'brake', 'lane-right'],
+      ['signal-right', 'mirror-right', 'shoulder-right', 'brake', 'lane-right', 'turn-right'],
       ['brake', 'shoulder-right'],
       [
         { trafficLight: 'red' },
@@ -101,7 +101,7 @@ export const newmarketCentre: CentreProfile = {
       'urban',
       50,
       36,
-      ['signal-left', 'mirror-left', 'shoulder-left', 'lane-left'],
+      ['signal-left', 'mirror-left', 'shoulder-left', 'lane-left', 'turn-left'],
       ['shoulder-left'],
     ),
     'freeway-merge': variants(

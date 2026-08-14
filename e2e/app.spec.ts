@@ -78,6 +78,22 @@ test('approaches the instructed intersection only while the vehicle moves', asyn
   await expect(page.getByText(/Intersection ahead|Intersection approaching|Decision zone/)).toBeVisible()
 })
 
+test('changes the right direction control into a turn at the intersection', async ({ page }) => {
+  await page.goto('?debug=1&seed=47')
+  await page.getByRole('button', { name: 'Choose a test centre' }).click()
+  await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Start when ready' }).click()
+
+  await page.getByRole('button', { name: 'Move one lane right to Right lane' }).click()
+  await page.keyboard.down('ArrowUp')
+  await expect(page.getByRole('button', { name: 'Turn right at the intersection' })).toBeVisible({ timeout: 2_000 })
+  await page.keyboard.up('ArrowUp')
+
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByText('Turning right through the intersection')).toBeVisible()
+  await expect(page.getByText('Scene 2/6')).toBeVisible({ timeout: 2_000 })
+})
+
 test('home and centre pages have no serious automated accessibility violations', async ({ page }) => {
   await page.goto('?debug=1')
   let results = await new AxeBuilder({ page }).analyze()
