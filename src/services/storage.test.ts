@@ -33,6 +33,21 @@ describe('local data services', () => {
     expect(preferences.keyBindings.find((binding) => binding.action === 'lane-right')?.label).toBe('D / →')
   })
 
+  it('migrates the old default signal keys without changing other bindings', () => {
+    window.localStorage.setItem('ontario-g-test.preferences.v1', JSON.stringify({
+      ...defaultPreferences,
+      keyBindings: defaultPreferences.keyBindings.map((binding) => binding.action === 'signal-left'
+        ? { ...binding, code: 'Comma', label: ',' }
+        : binding.action === 'signal-right'
+          ? { ...binding, code: 'Period', label: '.' }
+          : binding),
+    }))
+
+    const preferences = loadPreferences()
+    expect(preferences.keyBindings.find((binding) => binding.action === 'signal-left')).toMatchObject({ code: 'KeyZ', label: 'Z' })
+    expect(preferences.keyBindings.find((binding) => binding.action === 'signal-right')).toMatchObject({ code: 'KeyC', label: 'C' })
+  })
+
   it('derives a weak scenario from the latest ten attempts', () => {
     const attempt = {
       startedAt: '2026-08-12T00:00:00.000Z',

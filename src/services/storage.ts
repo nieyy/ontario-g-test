@@ -39,8 +39,8 @@ export const defaultPreferences: Preferences = {
     { action: 'brake', code: 'KeyS', label: 'S / ↓' },
     { action: 'lane-left', code: 'KeyA', label: 'A / ←' },
     { action: 'lane-right', code: 'KeyD', label: 'D / →' },
-    { action: 'signal-left', code: 'Comma', label: ',' },
-    { action: 'signal-right', code: 'Period', label: '.' },
+    { action: 'signal-left', code: 'KeyZ', label: 'Z' },
+    { action: 'signal-right', code: 'KeyC', label: 'C' },
     { action: 'mirror-left', code: 'KeyQ', label: 'Q' },
     { action: 'mirror-right', code: 'KeyE', label: 'E' },
     { action: 'shoulder-left', code: 'Shift+KeyQ', label: 'Shift+Q' },
@@ -57,6 +57,8 @@ export function loadPreferences(): Preferences {
     const keyBindings = stored.keyBindings?.map((binding) => {
       if (binding.action === 'lane-left' && binding.label === 'A') return { ...binding, label: 'A / ←' }
       if (binding.action === 'lane-right' && binding.label === 'D') return { ...binding, label: 'D / →' }
+      if (binding.action === 'signal-left' && binding.code === 'Comma' && binding.label === ',') return { ...binding, code: 'KeyZ', label: 'Z' }
+      if (binding.action === 'signal-right' && binding.code === 'Period' && binding.label === '.') return { ...binding, code: 'KeyC', label: 'C' }
       return binding
     })
     return { ...defaultPreferences, ...stored, keyBindings: keyBindings ?? defaultPreferences.keyBindings }
