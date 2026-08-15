@@ -8,6 +8,14 @@ describe('local data services', () => {
   it('round-trips preferences', () => {
     savePreferences({ ...defaultPreferences, speechEnabled: false })
     expect(loadPreferences().speechEnabled).toBe(false)
+    expect(loadPreferences().ambientSoundEnabled).toBe(true)
+  })
+
+  it('adds road ambience when loading preferences saved by an older release', () => {
+    const olderPreferences: Partial<typeof defaultPreferences> = { ...defaultPreferences }
+    delete olderPreferences.ambientSoundEnabled
+    window.localStorage.setItem('ontario-g-test.preferences.v1', JSON.stringify(olderPreferences))
+    expect(loadPreferences().ambientSoundEnabled).toBe(true)
   })
 
   it('migrates lane labels saved by the separated-control release', () => {

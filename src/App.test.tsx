@@ -21,5 +21,12 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Before you drive' })).toBeInTheDocument()
     expect(screen.getByText(/Danger pauses the exam/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start when ready' })).toBeEnabled()
+    expect(screen.getByText(/Road ambience on/i)).toBeInTheDocument()
+  })
+
+  it('offers an independent road ambience preference', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.getByRole('checkbox', { name: /Road ambience/i })).toBeChecked()
   })
 })

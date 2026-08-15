@@ -117,6 +117,7 @@ export type KeyBinding = {
 export type Preferences = {
   subtitlesZh: boolean
   speechEnabled: boolean
+  ambientSoundEnabled: boolean
   reducedMotion: boolean
   highContrast: boolean
   keyBindings: KeyBinding[]

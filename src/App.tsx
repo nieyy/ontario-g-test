@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './styles.css'
 import { CanvasRoadScene } from './components/CanvasRoadScene'
+import { RouteMiniMap } from './components/RouteMiniMap'
 import { newmarketCentre, scenarioLabels } from './content/data'
 import type {
   ActionType,
@@ -43,6 +44,7 @@ import {
   type AttemptCheckpoint,
 } from './services/storage'
 import { speakInstruction } from './services/speech'
+import { createRoadAmbience, type RoadAmbience } from './services/roadAmbience'
 
 type View = 'home' | 'centre' | 'briefing' | 'player' | 'report' | 'history' | 'settings'
 
@@ -190,7 +192,7 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
         </section>
       </div>
       <div className="briefing-footer">
-        <p>{practiceType ? 'About 2–3 minutes' : 'About 16 minutes'} · Speech {preferences.speechEnabled ? 'on' : 'off'} · Chinese subtitles {preferences.subtitlesZh ? 'on' : 'off'}</p>
+        <p>{practiceType ? 'About 2–3 minutes' : 'About 16 minutes'} · Speech {preferences.speechEnabled ? 'on' : 'off'} · Road ambience {preferences.ambientSoundEnabled ? 'on' : 'off'} · Chinese subtitles {preferences.subtitlesZh ? 'on' : 'off'}</p>
         <div><button className="secondary" onClick={back}>Back</button><button className="primary large" onClick={start}>Start when ready</button></div>
       </div>
     </main>
@@ -229,6 +231,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
   const [recentAction, setRecentAction] = useState<ActionType | null>(null)
   const controls = useRef(new Set<ActionType>())
   const feedbackTimer = useRef<number | undefined>(undefined)
+  const ambienceRef = useRef<RoadAmbience | null>(null)
   const [startedAt] = useState(checkpoint?.startedAt ?? new Date().toISOString())
   const [attemptId] = useState(checkpoint?.attemptId ?? `${engine.seed}-${startedAt}`)
   const engineRef = useRef(engine)
@@ -241,6 +244,12 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
     ? requestedDebugScale > 0 ? requestedDebugScale : 80
     : 1
 
+  const startAmbience = useCallback(() => {
+    if (!preferences.ambientSoundEnabled) return
+    if (!ambienceRef.current) ambienceRef.current = createRoadAmbience()
+    void ambienceRef.current?.resume()
+  }, [preferences.ambientSoundEnabled])
+
   const perform = useCallback((action: ActionType) => {
     if (action === 'pause') {
       setManualPaused((value) => !value)
@@ -248,15 +257,30 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
     }
     if ((engineRef.current.turnDirection || engineRef.current.laneChangeFrom !== null) && (action.startsWith('lane-') || action.startsWith('turn-'))) return
     if ((action === 'turn-left' || action === 'turn-right') && !canStartTurn(engineRef.current, action)) return
+    if (action === 'accelerate') startAmbience()
     window.clearTimeout(feedbackTimer.current)
     setRecentAction(action)
     feedbackTimer.current = window.setTimeout(() => setRecentAction(null), 900)
     setEngine((state) => recordAction(state, action))
-  }, [])
+  }, [startAmbience])
 
   useEffect(() => () => window.clearTimeout(feedbackTimer.current), [])
 
   useEffect(() => { engineRef.current = engine }, [engine])
+
+  useEffect(() => {
+    if (!preferences.ambientSoundEnabled) {
+      ambienceRef.current?.dispose()
+      ambienceRef.current = null
+      return
+    }
+    ambienceRef.current?.update(engine.speedKph, !manualPaused && !engine.dangerPending && !engine.completed)
+  }, [engine.completed, engine.dangerPending, engine.speedKph, manualPaused, preferences.ambientSoundEnabled])
+
+  useEffect(() => () => {
+    ambienceRef.current?.dispose()
+    ambienceRef.current = null
+  }, [])
 
   useEffect(() => {
     if (!acquireAttemptLock(attemptId)) {
@@ -378,10 +402,12 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
             <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>
             <button onClick={() => speakInstruction(scenario.examinerInstruction, true)} aria-label="Repeat examiner instruction">↻</button>
           </div>
-          <div className="route-progress-card" aria-label={`Route progress: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
-            <div><small>ROUTE PROGRESS</small><strong>{formatTime(remaining)}</strong></div>
-            <div className="route-dots">{engine.route.map((item, index) => <i key={`${item.id}-${index}`} className={index < engine.scenarioIndex ? 'done' : index === engine.scenarioIndex ? 'current' : ''} />)}</div>
+          <div className="route-progress-card" aria-label={`Practice route map: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
+            <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} />
           </div>
+        </div>
+        <div className="mobile-route-progress-card" aria-label={`Practice route map: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
+          <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} />
         </div>
         <aside className="control-deck" aria-label="Driving controls">
           <div className="instrument-panel">
@@ -462,7 +488,7 @@ function Settings({ preferences, update }: { preferences: Preferences; update: (
     const bindings = preferences.keyBindings.map((binding, current) => current === index ? { ...binding, code, label: event.shiftKey ? `Shift+${event.key.toUpperCase()}` : event.key.length === 1 ? event.key.toUpperCase() : event.key } : binding)
     set({ keyBindings: bindings })
   }
-  return <main id="main-content" className="page-shell settings-page"><p className="eyebrow">Accessibility & controls</p><h1>Settings</h1><section className="panel toggle-list"><label><span><strong>Spoken examiner instructions</strong><small>Uses the browser’s en-CA speech voice when available.</small></span><input type="checkbox" checked={preferences.speechEnabled} onChange={(event) => set({ speechEnabled: event.target.checked })} /></label><label><span><strong>Chinese subtitles</strong><small>English examiner wording remains primary.</small></span><input type="checkbox" checked={preferences.subtitlesZh} onChange={(event) => set({ subtitlesZh: event.target.checked })} /></label><label><span><strong>Reduced road motion</strong><small>Stops moving lane markers and lead-vehicle drift.</small></span><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => set({ reducedMotion: event.target.checked })} /></label><label><span><strong>High contrast</strong><small>Strengthens borders and text contrast throughout the interface.</small></span><input type="checkbox" checked={preferences.highContrast} onChange={(event) => set({ highContrast: event.target.checked })} /></label></section><section className="panel key-settings"><div className="section-heading"><div><h2>Keyboard mapping</h2><p>Focus a key button and press the replacement key. Left/right arrows are permanent steering aliases for lane changes and prompted turns.</p>{conflict && <p className="form-error" role="alert">{conflict}</p>}</div><button className="secondary" onClick={() => { setConflict(''); set({ keyBindings: defaultPreferences.keyBindings }) }}>Reset</button></div>{preferences.keyBindings.map((binding, index) => <div key={binding.action}><span>{actionNames[binding.action]}</span><button disabled={binding.action === 'pause'} aria-label={`Remap ${actionNames[binding.action]}`} onKeyDown={(event) => remap(index, event)}>{binding.label}</button></div>)}</section></main>
+  return <main id="main-content" className="page-shell settings-page"><p className="eyebrow">Accessibility & controls</p><h1>Settings</h1><section className="panel toggle-list"><label><span><strong>Spoken examiner instructions</strong><small>Uses the browser’s en-CA speech voice when available.</small></span><input type="checkbox" checked={preferences.speechEnabled} onChange={(event) => set({ speechEnabled: event.target.checked })} /></label><label><span><strong>Road ambience</strong><small>Plays subtle synthesized tyre, wind, and street noise only while the vehicle is moving.</small></span><input type="checkbox" checked={preferences.ambientSoundEnabled} onChange={(event) => set({ ambientSoundEnabled: event.target.checked })} /></label><label><span><strong>Chinese subtitles</strong><small>English examiner wording remains primary.</small></span><input type="checkbox" checked={preferences.subtitlesZh} onChange={(event) => set({ subtitlesZh: event.target.checked })} /></label><label><span><strong>Reduced road motion</strong><small>Stops moving lane markers and lead-vehicle drift.</small></span><input type="checkbox" checked={preferences.reducedMotion} onChange={(event) => set({ reducedMotion: event.target.checked })} /></label><label><span><strong>High contrast</strong><small>Strengthens borders and text contrast throughout the interface.</small></span><input type="checkbox" checked={preferences.highContrast} onChange={(event) => set({ highContrast: event.target.checked })} /></label></section><section className="panel key-settings"><div className="section-heading"><div><h2>Keyboard mapping</h2><p>Focus a key button and press the replacement key. Left/right arrows are permanent steering aliases for lane changes and prompted turns.</p>{conflict && <p className="form-error" role="alert">{conflict}</p>}</div><button className="secondary" onClick={() => { setConflict(''); set({ keyBindings: defaultPreferences.keyBindings }) }}>Reset</button></div>{preferences.keyBindings.map((binding, index) => <div key={binding.action}><span>{actionNames[binding.action]}</span><button disabled={binding.action === 'pause'} aria-label={`Remap ${actionNames[binding.action]}`} onKeyDown={(event) => remap(index, event)}>{binding.label}</button></div>)}</section></main>
 }
 
 export default function App() {

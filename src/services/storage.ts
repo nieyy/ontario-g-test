@@ -31,6 +31,7 @@ export type AttemptCheckpoint<TState = unknown> = {
 export const defaultPreferences: Preferences = {
   subtitlesZh: true,
   speechEnabled: true,
+  ambientSoundEnabled: true,
   reducedMotion: false,
   highContrast: false,
   keyBindings: [
