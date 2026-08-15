@@ -55,6 +55,38 @@ test('holds speed after the keyboard accelerator is released', async ({ page }) 
   await expect(page.locator('.speed-readout strong')).toHaveText(String(speedAfterRelease))
 })
 
+test('distinguishes pedal taps from sustained acceleration and braking', async ({ page }) => {
+  await page.goto('?seed=32')
+  await page.getByRole('button', { name: 'Choose a test centre' }).click()
+  await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Start when ready' }).click()
+  const speed = page.locator('.speed-readout strong')
+
+  await page.keyboard.press('ArrowUp')
+  await expect(speed).toHaveText('2')
+  await page.waitForTimeout(500)
+  await expect(speed).toHaveText('2')
+
+  await page.keyboard.down('ArrowUp')
+  await page.waitForTimeout(900)
+  await page.keyboard.up('ArrowUp')
+  const speedAfterHold = Number(await speed.innerText())
+  expect(speedAfterHold).toBeGreaterThan(8)
+
+  await page.keyboard.press('ArrowDown')
+  const speedAfterTapBrake = Number(await speed.innerText())
+  expect(speedAfterTapBrake).toBeGreaterThan(0)
+  expect(speedAfterHold - speedAfterTapBrake).toBeGreaterThanOrEqual(2)
+  expect(speedAfterHold - speedAfterTapBrake).toBeLessThanOrEqual(3)
+  await page.waitForTimeout(500)
+  await expect(speed).toHaveText(String(speedAfterTapBrake))
+
+  await page.keyboard.down('ArrowDown')
+  await page.waitForTimeout(700)
+  await page.keyboard.up('ArrowDown')
+  expect(Number(await speed.innerText())).toBeLessThan(speedAfterTapBrake)
+})
+
 test('approaches the instructed intersection only while the vehicle moves', async ({ page }) => {
   await page.goto('?seed=43')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()

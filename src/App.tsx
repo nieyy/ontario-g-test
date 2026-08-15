@@ -47,6 +47,9 @@ import { speakInstruction } from './services/speech'
 import { createRoadAmbience, type RoadAmbience } from './services/roadAmbience'
 
 type View = 'home' | 'centre' | 'briefing' | 'player' | 'report' | 'history' | 'settings'
+type PedalAction = 'accelerate' | 'brake'
+
+const PEDAL_HOLD_DELAY_MS = 350
 
 const actionNames: Record<ActionType, string> = {
   accelerate: 'Accelerate',
@@ -183,8 +186,8 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
         </section>
         <section className="panel controls-cheat">
           <h2>Keyboard</h2>
-          <div><kbd>W</kbd><kbd>↑</kbd><span>Accelerate; release to hold speed</span></div>
-          <div><kbd>S</kbd><kbd>↓</kbd><span>Brake; release to hold the new speed</span></div>
+          <div><kbd>W</kbd><kbd>↑</kbd><span>Tap for a small speed increase; hold for continuous acceleration</span></div>
+          <div><kbd>S</kbd><kbd>↓</kbd><span>Tap for light braking; hold for firm continuous braking</span></div>
           <div><kbd>A / ←</kbd><kbd>D / →</kbd><span>Steer: change lane; repeat at the edge to turn when prompted</span></div>
           <div><kbd>,</kbd><kbd>.</kbd><span>Left / right signal</span></div>
           <div><kbd>Q</kbd><kbd>E</kbd><span>Left / right mirror</span></div>
@@ -230,6 +233,8 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
   const [manualPaused, setManualPaused] = useState(false)
   const [recentAction, setRecentAction] = useState<ActionType | null>(null)
   const controls = useRef(new Set<ActionType>())
+  const pressedPedals = useRef(new Set<PedalAction>())
+  const pedalHoldTimers = useRef<Partial<Record<PedalAction, number>>>({})
   const feedbackTimer = useRef<number | undefined>(undefined)
   const ambienceRef = useRef<RoadAmbience | null>(null)
   const [startedAt] = useState(checkpoint?.startedAt ?? new Date().toISOString())
@@ -264,7 +269,27 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
     setEngine((state) => recordAction(state, action))
   }, [startAmbience])
 
-  useEffect(() => () => window.clearTimeout(feedbackTimer.current), [])
+  const endControl = useCallback((action: PedalAction) => {
+    pressedPedals.current.delete(action)
+    controls.current.delete(action)
+    window.clearTimeout(pedalHoldTimers.current[action])
+    delete pedalHoldTimers.current[action]
+  }, [])
+
+  const beginControl = useCallback((action: PedalAction) => {
+    if (pressedPedals.current.has(action)) return
+    pressedPedals.current.add(action)
+    perform(action)
+    pedalHoldTimers.current[action] = window.setTimeout(() => {
+      if (pressedPedals.current.has(action)) controls.current.add(action)
+    }, PEDAL_HOLD_DELAY_MS)
+  }, [perform])
+
+  useEffect(() => () => {
+    window.clearTimeout(feedbackTimer.current)
+    endControl('accelerate')
+    endControl('brake')
+  }, [endControl])
 
   useEffect(() => { engineRef.current = engine }, [engine])
 
@@ -312,15 +337,20 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       if (action === 'lane-left' && canStartTurn(engineRef.current, 'turn-left')) action = 'turn-left'
       if (action === 'lane-right' && canStartTurn(engineRef.current, 'turn-right')) action = 'turn-right'
       event.preventDefault()
-      if (action === 'accelerate' || action === 'brake') controls.current.add(action)
+      if (action === 'accelerate' || action === 'brake') {
+        if (!event.repeat) beginControl(action)
+        return
+      }
       if (!event.repeat) perform(action)
     }
     const keyUp = (event: KeyboardEvent) => {
       const action = actionForKey(event, preferences)
-      if (action === 'accelerate' || action === 'brake') controls.current.delete(action)
+      if (action === 'accelerate' || action === 'brake') endControl(action)
     }
     const hidden = () => {
       if (document.hidden) {
+        endControl('accelerate')
+        endControl('brake')
         setManualPaused(true)
         void saveCheckpoint({ attemptId, contentVersion: newmarketCentre.contentVersion, startedAt, savedAt: new Date().toISOString(), state: engineRef.current })
       }
@@ -333,7 +363,13 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       window.removeEventListener('keyup', keyUp)
       document.removeEventListener('visibilitychange', hidden)
     }
-  }, [attemptId, perform, preferences, startedAt])
+  }, [attemptId, beginControl, endControl, perform, preferences, startedAt])
+
+  useEffect(() => {
+    if (!manualPaused && !engine.dangerPending) return
+    endControl('accelerate')
+    endControl('brake')
+  }, [endControl, engine.dangerPending, manualPaused])
 
   useEffect(() => {
     const bucket = Math.floor(engine.elapsed / 10)
@@ -350,14 +386,6 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       onFinish(toAttemptRecord(engine, startedAt))
     }
   }, [attemptId, engine, onFinish, startedAt])
-
-  const beginControl = useCallback((action: 'accelerate' | 'brake') => {
-    controls.current.add(action)
-    perform(action)
-  }, [perform])
-  const endControl = useCallback((action: 'accelerate' | 'brake') => {
-    controls.current.delete(action)
-  }, [])
 
   const totalDuration = engine.route.reduce((sum, item) => sum + item.durationSeconds, 0)
   const remaining = totalDuration - engine.elapsed

@@ -14,6 +14,8 @@ export const TICK_SECONDS = 0.1
 export const INTERSECTION_DECISION_DISTANCE_METERS = 180
 export const INTERSECTION_TURN_EXIT_DISTANCE_METERS = 245
 export const LANE_CHANGE_DURATION_SECONDS = 0.9
+export const TAP_ACCELERATION_KPH = 1.5
+export const TAP_BRAKING_KPH = 2.5
 const TURN_DURATION_SECONDS = 1.4
 
 export type EngineState = {
@@ -126,8 +128,8 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   }
   if (type === 'signal-left') signal = signal === 'left' ? null : 'left'
   if (type === 'signal-right') signal = signal === 'right' ? null : 'right'
-  if (type === 'accelerate') speedKph = Math.min(120, speedKph + 3)
-  if (type === 'brake') speedKph = Math.max(0, speedKph - 7)
+  if (type === 'accelerate') speedKph = Math.min(120, speedKph + TAP_ACCELERATION_KPH)
+  if (type === 'brake') speedKph = Math.max(0, speedKph - TAP_BRAKING_KPH)
   if (type === 'turn-left') {
     turnDirection = 'left'
     turnStartDistanceMeters = state.scenarioDistanceMeters

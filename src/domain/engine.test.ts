@@ -38,6 +38,20 @@ describe('deterministic engine', () => {
     expect(state.speedKph).toBeCloseTo(reducedSpeed)
   })
 
+  it('uses small pedal taps and stronger continuous holds', () => {
+    let state = { ...createEngine(16, 'practice'), speedKph: 50 }
+    state = recordAction(state, 'accelerate')
+    expect(state.speedKph).toBe(51.5)
+    state = advanceEngine(state, 1)
+    expect(state.speedKph).toBe(51.5)
+
+    state = recordAction(state, 'brake')
+    expect(state.speedKph).toBe(49)
+    const tappedSpeed = state.speedKph
+    state = advanceEngine(state, 0.5, new Set(['brake'] as const))
+    expect(state.speedKph).toBeLessThan(tappedSpeed - 10)
+  })
+
   it('advances scenario distance only when the vehicle moves', () => {
     let state = createEngine(12, 'practice')
     state = advanceEngine(state, 5)
