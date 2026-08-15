@@ -711,6 +711,7 @@ export default function App() {
 
   const startDraft = () => {
     if (!draftConfig) return
+    clearCheckpoint()
     setActiveConfig(resolveRunConfig(draftConfig))
     setPlayerKey((value) => value + 1)
     setView('player')

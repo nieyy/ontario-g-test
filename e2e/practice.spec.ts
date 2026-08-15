@@ -27,6 +27,21 @@ test('keeps Exam mode free of guided Coach content', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Guided practice coach' })).toHaveCount(0)
 })
 
+test('starts a new Exam without inheriting an interrupted Guided Practice checkpoint', async ({ page }) => {
+  await page.goto('?debug=1&seed=19')
+  await openGuidedPractice(page)
+  await chooseScenario(page, 'Right on red')
+  await page.waitForTimeout(700)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Resume interrupted drive' })).toBeVisible()
+
+  await chooseNewmarket(page)
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
+  await page.getByRole('button', { name: 'Start when ready' }).click()
+  await expect(page.getByText('EXAM MODE', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Guided practice coach' })).toHaveCount(0)
+})
+
 test('offers a full route and all six focused Guided Practice entries', async ({ page }) => {
   await page.goto('?seed=17')
   await openGuidedPractice(page)
