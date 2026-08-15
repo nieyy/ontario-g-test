@@ -1,6 +1,6 @@
 # Ontario G Practice
 
-A static, first-person interactive study game for Ontario G road-test preparation. Version 1.0 ships a 16-minute Newmarket content pack with common English examiner instructions, six scenario families, deterministic mistake review, focused practice, and local-only history.
+A static, first-person interactive study game for Ontario G road-test preparation. Version 1.1 ships Exam mode plus coached full-route and focused Guided Practice for the Newmarket content pack.
 
 Play it at <https://nieyy.github.io/ontario-g-test/>.
 
@@ -8,7 +8,9 @@ Play it at <https://nieyy.github.io/ontario-g-test/>.
 
 - Newmarket centre selection with a clear evidence and route disclaimer
 - Three authored variants for each of six scenario families: right on red, yellow-light decisions, multi-lane left turns, freeway merging, slow lead vehicles, and freeway exits
-- Mouse, touch, and keyboard input (`WASD`/arrows, `,`/`.`, `Q`/`E`, `Shift+Q`/`Shift+E`)
+- Exam mode with no teaching prompts, and Guided Practice with controlled Mirror–Signal–Shoulder coaching
+- Full-route Guided Practice or focused scenario rounds with same-situation and next-variation retry
+- Mouse, touch, and keyboard input (`WASD`/arrows, `Z`/`C` signals, `Q`/`E` mirrors, `Shift+Q`/`Shift+E` shoulder checks; `,`/`.` remain signal aliases)
 - Browser `en-CA` speech with optional Chinese subtitles
 - A fixed-step, seeded TypeScript simulation independent from React and SVG rendering
 - Dangerous-event pause with an explicit “end” or “continue as practice” choice
@@ -43,9 +45,9 @@ The complete release gate is `npm run check:release`.
 
 ## Content contract
 
-Centre and scenario content lives in `src/content`. Every centre has a stable ID, content version, publication state, evidence metadata, disclaimer, and three or more variants per scenario family. Run `npm run validate:content` after any content change.
+Centre, scenario, and controlled GuidancePlan content lives in `src/content`. Every centre has a stable ID, content version, publication state, evidence metadata, disclaimer, and three variants per scenario family. The content validator also proves that all 18 playable variants have exactly one guidance plan and enforces Mirror–Signal–Shoulder order. Run `npm run validate:content` after any content change.
 
-The Newmarket address and available G service are linked to the official DriveTest centre listing. All simulated road geometry, traffic events, speeds, and examiner situations in 1.0 are deliberately labelled as authored teaching content.
+The Newmarket address and available G service are linked to the official DriveTest centre listing. All simulated road geometry, traffic events, speeds, examiner situations, and guidance in 1.1 are deliberately labelled as authored teaching content.
 
 ## Deployment
 

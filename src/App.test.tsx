@@ -18,10 +18,22 @@ describe('App', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Choose a test centre' }))
     fireEvent.click(screen.getByRole('button', { name: 'Select Newmarket' }))
+    expect(screen.getByRole('heading', { name: 'Choose how you want to train' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Exam mode' }))
     expect(screen.getByRole('heading', { name: 'Before you drive' })).toBeInTheDocument()
-    expect(screen.getByText(/Danger pauses the exam/)).toBeInTheDocument()
+    expect(screen.getByText(/Exam mode can end or continue as practice/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start when ready' })).toBeEnabled()
     expect(screen.getByText(/Road ambience on/i)).toBeInTheDocument()
+  })
+
+  it('offers full-route and all six typical Guided Practice scenarios', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a test centre' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Newmarket' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Guided Practice' }))
+    expect(screen.getByRole('heading', { name: 'Choose a Guided Practice session' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Start full route/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Practice this scene' })).toHaveLength(6)
   })
 
   it('offers an independent road ambience preference', () => {

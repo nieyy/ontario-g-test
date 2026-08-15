@@ -1,4 +1,16 @@
-import type { AttemptRecord, Preferences, ScenarioType } from '../content/types'
+import { newmarketCentre } from '../content/data'
+import type {
+  AttemptRecord,
+  AttemptRecordV2,
+  AttemptRuntimeContext,
+  AttemptStatus,
+  CoachState,
+  Preferences,
+  ResolvedRunConfig,
+  RunStage,
+  ScenarioType,
+} from '../content/types'
+import { createRunConfig, resolveRunConfig, type EngineState } from '../domain/engine'
 
 const PREFERENCES_KEY = 'ontario-g-test.preferences.v1'
 const FALLBACK_ATTEMPTS_KEY = 'ontario-g-test:attempts:v1'
@@ -26,6 +38,17 @@ export type AttemptCheckpoint<TState = unknown> = {
   startedAt: string
   savedAt: string
   state: TState
+}
+
+type PersistedEngineStateV2 = EngineState & { stage: RunStage }
+
+export type AttemptCheckpointV2 = AttemptCheckpoint<PersistedEngineStateV2> & {
+  schemaVersion: 2
+  config: ResolvedRunConfig
+  runtime: AttemptRuntimeContext
+  status: AttemptStatus
+  coach?: CoachState
+  guidancePlanVersion?: number
 }
 
 export const defaultPreferences: Preferences = {
@@ -91,23 +114,98 @@ function fallbackAttempts(): AttemptRecord[] {
   }
 }
 
-export async function saveAttempt(attempt: AttemptRecord): Promise<void> {
+export function normalizeAttemptRecord(stored: AttemptRecord | AttemptRecordV2): AttemptRecordV2 {
+  if ('schemaVersion' in stored && stored.schemaVersion === 2) {
+    return {
+      ...stored,
+      scenarioIds: stored.scenarioIds ?? [],
+      actions: stored.actions ?? [],
+      findings: (stored.findings ?? []).map((finding) => ({ ...finding, context: finding.context ?? (stored.mode === 'exam' ? 'exam' : 'practice') })),
+      dangerousFindingIds: stored.dangerousFindingIds ?? [],
+      migrationSource: 'v2',
+    }
+  }
+  const scenarioIds = stored.scenarioIds ?? []
+  const findings = stored.findings ?? []
+  const variantId = scenarioIds.length === 1 ? scenarioIds[0] : undefined
+  const variant = variantId
+    ? Object.values(newmarketCentre.variants).flat().find((candidate) => candidate.id === variantId)
+    : undefined
+  const mode = stored.runStage === 'exam' ? 'exam' as const : 'practice' as const
+  const context = stored.runStage === 'exam'
+    ? 'exam' as const
+    : stored.runStage === 'practice'
+      ? 'practice' as const
+      : 'legacy-unknown' as const
+  return {
+    ...stored,
+    schemaVersion: 2,
+    mode,
+    scope: mode === 'practice' && variant
+      ? {
+          kind: 'scenario',
+          scenarioType: variant.type,
+          variantId: variant.id,
+          practiceSessionId: `legacy-${stored.id}`,
+          roundIndex: 1,
+        }
+      : { kind: 'full-route' },
+    scenarioIds,
+    actions: stored.actions ?? [],
+    findings: findings.map((finding) => ({ ...finding, context })),
+    dangerousFindingIds: stored.dangerousFindingIds ?? findings.filter((finding) => finding.severity === 'dangerous').map((finding) => finding.id),
+    guidanceSummary: [],
+    migrationSource: 'v1',
+  }
+}
+
+export function normalizeEngineCheckpoint(stored: AttemptCheckpoint<EngineState> | AttemptCheckpointV2): AttemptCheckpointV2 | undefined {
+  const state = stored.state
+  if (!state?.route?.length) return undefined
+  if ('schemaVersion' in stored && stored.schemaVersion === 2) return stored
+  const stage = state.stage ?? 'exam'
+  const only = state.route.length === 1 ? state.route[0] : undefined
+  const config = resolveRunConfig(createRunConfig({
+    centreId: 'newmarket',
+    mode: stage === 'exam' ? 'exam' : 'practice',
+    seed: state.seed,
+    scope: only && stage !== 'exam'
+      ? { kind: 'scenario', scenarioType: only.type, variantId: only.id, practiceSessionId: `legacy-${stored.attemptId}`, roundIndex: 1 }
+      : { kind: 'full-route' },
+  }))
+  return {
+    ...stored,
+    schemaVersion: 2,
+    state: { ...state, stage },
+    config,
+    runtime: {
+      originMode: config.mode,
+      guidanceMode: config.mode === 'practice' ? 'guided' : stage === 'continued-practice' ? 'guided' : 'off',
+      findingContext: stage === 'exam' ? 'exam' : 'practice',
+      continuedAfterDangerAtSeconds: stage === 'continued-practice' ? state.elapsed : undefined,
+    },
+    status: state.dangerPending ? 'danger-review' : state.paused ? 'paused' : state.completed ? 'completed' : 'running',
+  }
+}
+
+export async function saveAttempt(attempt: AttemptRecord | AttemptRecordV2): Promise<void> {
+  const normalized = normalizeAttemptRecord(attempt)
   if (typeof indexedDB === 'undefined') {
-    window.localStorage.setItem(FALLBACK_ATTEMPTS_KEY, JSON.stringify([attempt, ...fallbackAttempts()].slice(0, 50)))
+    window.localStorage.setItem(FALLBACK_ATTEMPTS_KEY, JSON.stringify([normalized, ...fallbackAttempts()].slice(0, 50)))
     return
   }
   const db = await openDatabase()
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(ATTEMPT_STORE, 'readwrite')
-    transaction.objectStore(ATTEMPT_STORE).put(attempt)
+    transaction.objectStore(ATTEMPT_STORE).put(normalized)
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error)
   })
   db.close()
 }
 
-export async function getAttempts(): Promise<AttemptRecord[]> {
-  if (typeof indexedDB === 'undefined') return fallbackAttempts()
+export async function getAttempts(): Promise<AttemptRecordV2[]> {
+  if (typeof indexedDB === 'undefined') return fallbackAttempts().map(normalizeAttemptRecord)
   const db = await openDatabase()
   const attempts = await new Promise<AttemptRecord[]>((resolve, reject) => {
     const request = db.transaction(ATTEMPT_STORE).objectStore(ATTEMPT_STORE).getAll()
@@ -115,18 +213,25 @@ export async function getAttempts(): Promise<AttemptRecord[]> {
     request.onerror = () => reject(request.error)
   })
   db.close()
-  return attempts.sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  return attempts.map(normalizeAttemptRecord).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }
 
-export function weakestScenario(attempts: AttemptRecord[]): ScenarioType | undefined {
+export function weakestScenarioSuggestion(attempts: Array<AttemptRecord | AttemptRecordV2>): { scenarioType?: ScenarioType; source?: 'exam' | 'practice' } {
+  const normalized = attempts.map(normalizeAttemptRecord).slice(0, 10)
+  const hasExam = normalized.some((attempt) => attempt.findings.some((finding) => finding.context === 'exam' && finding.severity !== 'good'))
+  const source = hasExam ? 'exam' as const : 'practice' as const
   const totals = new Map<ScenarioType, number>()
-  for (const attempt of attempts.slice(0, 10)) {
+  for (const attempt of normalized) {
     for (const finding of attempt.findings) {
-      if (finding.severity === 'good') continue
+      if (finding.severity === 'good' || finding.context !== source) continue
       totals.set(finding.scenarioType, (totals.get(finding.scenarioType) ?? 0) + (finding.severity === 'dangerous' ? 2 : 1))
     }
   }
-  return [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  return { scenarioType: [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0], source }
+}
+
+export function weakestScenario(attempts: Array<AttemptRecord | AttemptRecordV2>): ScenarioType | undefined {
+  return weakestScenarioSuggestion(attempts).scenarioType
 }
 
 export async function saveCheckpoint<TState>(checkpoint: AttemptCheckpoint<TState>): Promise<void> {

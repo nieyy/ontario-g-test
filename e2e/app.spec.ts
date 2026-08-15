@@ -6,15 +6,18 @@ test('completes an accelerated Newmarket drive and produces a review', async ({ 
   await expect(page.getByRole('heading', { name: /Make the G-test routine visible/i })).toBeVisible()
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
   await expect(page.getByText('G TEST PRACTICE', { exact: true })).toBeVisible()
 
-  for (let index = 0; index < 6; index += 1) {
-    const danger = page.getByRole('heading', { name: 'The exam portion stops here.' })
+  for (let index = 0; index < 7; index += 1) {
+    const danger = page.getByRole('heading', { name: /The exam portion stops here|Review this dangerous moment/ })
     const review = page.getByRole('heading', { name: /Review the dangerous moments first|Practice drive complete/i })
     await expect(danger.or(review)).toBeVisible({ timeout: 20_000 })
     if (await review.isVisible()) break
-    await page.getByRole('button', { name: index === 5 ? 'End & review' : 'Continue as practice' }).click()
+    const continueExam = page.getByRole('button', { name: 'Continue as practice' })
+    if (await continueExam.isVisible()) await continueExam.click()
+    else await page.getByRole('button', { name: 'Continue from here' }).click()
   }
 
   await expect(page.getByRole('heading', { name: /Review the dangerous moments first/i })).toBeVisible()
@@ -29,6 +32,7 @@ test('restores a version-compatible interrupted checkpoint after reload', async 
   await page.goto('?debug=1&seed=29')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
   await expect(page.getByText('G TEST PRACTICE', { exact: true })).toBeVisible()
   await page.waitForTimeout(700)
@@ -42,6 +46,7 @@ test('holds speed after the keyboard accelerator is released', async ({ page }) 
   await page.goto('?seed=31')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
   await expect(page.getByText('HOLD', { exact: true })).toBeVisible()
 
@@ -59,6 +64,7 @@ test('distinguishes pedal taps from sustained acceleration and braking', async (
   await page.goto('?seed=32')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
   const speed = page.locator('.speed-readout strong')
 
@@ -91,6 +97,7 @@ test('approaches the instructed intersection only while the vehicle moves', asyn
   await page.goto('?seed=43')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
 
   const roadWorld = page.getByTestId('road-world')
@@ -115,6 +122,7 @@ test('drives across the intersection and leaves it behind', async ({ page }) => 
   await page.goto('?debug=1&timeScale=2&startDistance=228&seed=45')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
 
   const roadWorld = page.getByTestId('road-world')
@@ -131,6 +139,7 @@ test('uses left and right steering keys for lane changes and edge turns', async 
   await page.goto('?debug=1&timeScale=1&startDistance=200&seed=47')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
 
   await page.keyboard.press('ArrowRight')
@@ -173,6 +182,7 @@ test.describe('mobile controls', () => {
     await page.goto('?seed=3')
     await page.getByRole('button', { name: 'Choose a test centre' }).click()
     await page.getByRole('button', { name: 'Select Newmarket' }).click()
+    await page.getByRole('button', { name: 'Choose Exam mode' }).click()
     await page.getByRole('button', { name: 'Start when ready' }).click()
     await expect(page.getByRole('button', { name: /Accelerate/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /Brake/ })).toBeVisible()
@@ -201,6 +211,7 @@ test('supports nearby primary signal keys and legacy aliases', async ({ page }) 
   await page.goto('?seed=13')
   await page.getByRole('button', { name: 'Choose a test centre' }).click()
   await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
   await page.getByRole('button', { name: 'Start when ready' }).click()
 
   await page.keyboard.press('z')

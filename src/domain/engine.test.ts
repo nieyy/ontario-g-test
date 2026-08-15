@@ -109,6 +109,8 @@ describe('deterministic engine', () => {
     expect(state.completed).toBe(false)
 
     state = advanceEngine(state, 0.7)
+    expect(state.dangerPending).toBe(true)
+    state = resolveDanger(state, 'continue')
     expect(state.completed).toBe(true)
   })
 

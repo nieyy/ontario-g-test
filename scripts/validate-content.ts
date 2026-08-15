@@ -1,8 +1,10 @@
 import { centres } from '../src/content/data'
-import { validateCentreContent } from '../src/content/validate'
+import { guidancePlans } from '../src/content/guidance'
+import { validateCentreContent, validateGuidanceContent } from '../src/content/validate'
 
 const errors = centres.flatMap((centre) =>
-  validateCentreContent(centre).map((error) => `${centre.id}: ${error}`),
+  [...validateCentreContent(centre), ...validateGuidanceContent(centre, guidancePlans)]
+    .map((error) => `${centre.id}: ${error}`),
 )
 
 if (errors.length) {
@@ -10,4 +12,4 @@ if (errors.length) {
   process.exit(1)
 }
 
-console.log(`Validated ${centres.length} centre and six scenario families.`)
+console.log(`Validated ${centres.length} centre, six scenario families, and ${guidancePlans.length} guidance plans.`)

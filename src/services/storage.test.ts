@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { defaultPreferences, loadPreferences, savePreferences, weakestScenario } from './storage'
+import { createEngine } from '../domain/engine'
+import { defaultPreferences, loadPreferences, normalizeAttemptRecord, normalizeEngineCheckpoint, savePreferences, weakestScenario, weakestScenarioSuggestion } from './storage'
 import type { AttemptRecord } from '../content/types'
 
 describe('local data services', () => {
@@ -50,12 +51,62 @@ describe('local data services', () => {
 
   it('derives a weak scenario from the latest ten attempts', () => {
     const attempt = {
+      id: 'legacy-exam',
+      centreId: 'newmarket',
+      contentVersion: '1.0.0',
+      seed: 1,
       startedAt: '2026-08-12T00:00:00.000Z',
+      runStage: 'exam',
+      durationSeconds: 10,
+      scenarioIds: ['freeway-merge-1'],
+      actions: [],
       findings: [
-        { scenarioType: 'freeway-merge', severity: 'dangerous' },
-        { scenarioType: 'yellow-light', severity: 'improve' },
+        { id: 'a', scenarioId: 'freeway-merge-1', scenarioType: 'freeway-merge', dimension: 'speed', severity: 'dangerous', situation: '', action: '', impact: '', improvement: '', evidence: { level: 'authored', label: '', checkedOn: '2026-08-12' }, atSeconds: 1 },
+        { id: 'b', scenarioId: 'yellow-light-1', scenarioType: 'yellow-light', dimension: 'decision', severity: 'improve', situation: '', action: '', impact: '', improvement: '', evidence: { level: 'authored', label: '', checkedOn: '2026-08-12' }, atSeconds: 2 },
       ],
+      dangerousFindingIds: ['a'],
+      completed: true,
     } as AttemptRecord
     expect(weakestScenario([attempt])).toBe('freeway-merge')
+    expect(weakestScenarioSuggestion([attempt]).source).toBe('exam')
+  })
+
+  it('normalizes legacy practice and continued-practice context conservatively', () => {
+    const base: AttemptRecord = {
+      id: 'legacy', centreId: 'newmarket', contentVersion: '1.0.0', seed: 2,
+      startedAt: '2026-08-12T00:00:00.000Z', runStage: 'practice', durationSeconds: 10,
+      scenarioIds: ['right-on-red-1'], actions: [], findings: [], dangerousFindingIds: [], completed: true,
+    }
+    const practice = normalizeAttemptRecord(base)
+    expect(practice.scope).toMatchObject({ kind: 'scenario', variantId: 'right-on-red-1' })
+    expect(practice.migrationSource).toBe('v1')
+
+    const continued = normalizeAttemptRecord({ ...base, runStage: 'continued-practice', findings: [{
+      id: 'legacy-danger', scenarioId: 'right-on-red-1', scenarioType: 'right-on-red', dimension: 'observation', severity: 'dangerous', situation: '', action: '', impact: '', improvement: '', evidence: { level: 'authored', label: '', checkedOn: '2026-08-12' }, atSeconds: 3,
+    }] })
+    expect(continued.findings[0].context).toBe('legacy-unknown')
+    expect(weakestScenarioSuggestion([continued]).scenarioType).toBeUndefined()
+  })
+
+  it('keeps a partially written legacy record readable without inventing evidence', () => {
+    const partial = normalizeAttemptRecord({
+      id: 'partial', centreId: 'newmarket', contentVersion: '1.0.0', seed: 3,
+      startedAt: '2026-08-12T00:00:00.000Z', runStage: 'continued-practice', durationSeconds: 2,
+      completed: false,
+    } as AttemptRecord)
+    expect(partial.scenarioIds).toEqual([])
+    expect(partial.actions).toEqual([])
+    expect(partial.findings).toEqual([])
+    expect(partial.dangerousFindingIds).toEqual([])
+    expect(partial.scope).toEqual({ kind: 'full-route' })
+  })
+
+  it('normalizes a v1 checkpoint while preserving its legacy stage for rollback', () => {
+    const state = createEngine(7, 'practice', 'right-on-red')
+    const checkpoint = normalizeEngineCheckpoint({ attemptId: 'legacy-checkpoint', contentVersion: '1.0.0', startedAt: '2026-08-12T00:00:00.000Z', savedAt: '2026-08-12T00:00:01.000Z', state })
+    expect(checkpoint?.schemaVersion).toBe(2)
+    expect(checkpoint?.state.stage).toBe('practice')
+    expect(checkpoint?.config.mode).toBe('practice')
+    expect(checkpoint?.config.scope).toMatchObject({ kind: 'scenario', variantId: state.route[0].id })
   })
 })

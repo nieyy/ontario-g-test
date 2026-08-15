@@ -1,30 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './styles.css'
 import { CanvasRoadScene } from './components/CanvasRoadScene'
+import { CoachPanel } from './components/CoachPanel'
+import { ModeSelect } from './components/ModeSelect'
+import { PracticeRoundSummary } from './components/PracticeRoundSummary'
+import { PracticeSelect } from './components/PracticeSelect'
 import { RouteMiniMap } from './components/RouteMiniMap'
 import { newmarketCentre, scenarioLabels } from './content/data'
+import { getGuidancePlan } from './content/guidance'
 import type {
   ActionType,
-  AttemptRecord,
+  AttemptRecordV2,
+  AttemptRuntimeContext,
+  CoachState,
   Finding,
   Preferences,
+  ResolvedRunConfig,
+  RunConfig,
   ScenarioType,
 } from './content/types'
 import {
   advanceEngine,
   canStartTurn,
   createEngine,
+  createRunConfig,
   currentScenario,
   INTERSECTION_DECISION_DISTANCE_METERS,
   INTERSECTION_TURN_EXIT_DISTANCE_METERS,
   LANE_CHANGE_DURATION_SECONDS,
   recordAction,
+  resolveRunConfig,
   resolveDanger,
+  restartScenario,
   summarizeDimensions,
   TICK_SECONDS,
   toAttemptRecord,
   type EngineState,
 } from './domain/engine'
+import { createCoachState, reduceCoachState, toCoachFrame } from './domain/guidance'
 import {
   defaultPreferences,
   acquireAttemptLock,
@@ -35,18 +48,20 @@ import {
   getAttempts,
   getLatestCheckpoint,
   loadPreferences,
+  normalizeEngineCheckpoint,
   refreshAttemptLock,
   releaseAttemptLock,
   saveAttempt,
   saveCheckpoint,
   savePreferences,
-  weakestScenario,
-  type AttemptCheckpoint,
+  weakestScenarioSuggestion,
+  type AttemptCheckpointV2,
 } from './services/storage'
 import { speakInstruction } from './services/speech'
 import { createRoadAmbience, type RoadAmbience } from './services/roadAmbience'
 
-type View = 'home' | 'centre' | 'briefing' | 'player' | 'report' | 'history' | 'settings'
+type View = 'home' | 'centre' | 'mode-select' | 'practice-select' | 'briefing' | 'player' | 'round-summary' | 'report' | 'history' | 'settings'
+const PRACTICE_MODE_ENABLED = true
 type PedalAction = 'accelerate' | 'brake'
 
 const PEDAL_HOLD_DELAY_MS = 350
@@ -172,18 +187,20 @@ function CentrePicker({ onSelect }: { onSelect: () => void }) {
   )
 }
 
-function Briefing({ preferences, start, back, practiceType }: { preferences: Preferences; start: () => void; back: () => void; practiceType?: ScenarioType }) {
+function Briefing({ preferences, start, back, config }: { preferences: Preferences; start: () => void; back: () => void; config: RunConfig }) {
+  const practiceType = config.mode === 'practice' && config.scope.kind === 'scenario' ? config.scope.scenarioType : undefined
+  const guided = config.mode === 'practice'
   return (
     <main id="main-content" className="page-shell briefing">
-      <p className="eyebrow">Step 2 of 2</p>
-      <h1>{practiceType ? `Focused practice: ${scenarioLabels[practiceType]}` : 'Newmarket practice drive'}</h1>
+      <p className="eyebrow">Ready to start</p>
+      <h1>{practiceType ? `Guided scene: ${scenarioLabels[practiceType]}` : guided ? 'Guided Newmarket route' : 'Newmarket exam practice'}</h1>
       <div className="briefing-grid">
         <section className="panel">
           <h2>Before you drive</h2>
           <ol className="brief-list">
             <li><strong>Listen first.</strong><span>The examiner gives a destination, never the exact driving technique.</span></li>
             <li><strong>Make checks visible.</strong><span>Mirror and blind-spot actions must be explicit in this simulation.</span></li>
-            <li><strong>Danger pauses the exam.</strong><span>You may end or continue as practice; the original finding remains.</span></li>
+            <li><strong>Danger pauses the drive.</strong><span>Exam mode can end or continue as practice. Guided Practice can retry or continue.</span></li>
           </ol>
         </section>
         <section className="panel controls-cheat">
@@ -197,7 +214,7 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
         </section>
       </div>
       <div className="briefing-footer">
-        <p>{practiceType ? 'About 2–3 minutes' : 'About 16 minutes'} · Speech {preferences.speechEnabled ? 'on' : 'off'} · Road ambience {preferences.ambientSoundEnabled ? 'on' : 'off'} · Chinese subtitles {preferences.subtitlesZh ? 'on' : 'off'}</p>
+        <p>{practiceType ? 'About 2–3 minutes' : 'About 16 minutes'} · {guided ? 'Coach on' : 'Coach off'} · Speech {preferences.speechEnabled ? 'on' : 'off'} · Road ambience {preferences.ambientSoundEnabled ? 'on' : 'off'} · Chinese subtitles {preferences.subtitlesZh ? 'on' : 'off'}</p>
         <div><button className="secondary" onClick={back}>Back</button><button className="primary large" onClick={start}>Start when ready</button></div>
       </div>
     </main>
@@ -206,14 +223,15 @@ function Briefing({ preferences, start, back, practiceType }: { preferences: Pre
 
 type PlayerProps = {
   preferences: Preferences
-  practiceType?: ScenarioType
-  onFinish: (attempt: AttemptRecord) => void
+  config: ResolvedRunConfig
+  onFinish: (attempt: AttemptRecordV2) => void
+  onRetryScene: (config: ResolvedRunConfig, attempt: AttemptRecordV2) => void
   onExit: () => void
-  checkpoint?: AttemptCheckpoint<EngineState>
+  checkpoint?: AttemptCheckpointV2
   onLockConflict: () => void
 }
 
-function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLockConflict }: PlayerProps) {
+function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoint, onLockConflict }: PlayerProps) {
   const [engine, setEngine] = useState<EngineState>(() => {
     if (checkpoint) return {
         ...checkpoint.state,
@@ -225,12 +243,17 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
         turnProgress: checkpoint.state.turnProgress ?? 0,
         turnStartDistanceMeters: checkpoint.state.turnStartDistanceMeters ?? null,
       }
-    const created = createEngine(seedFromUrl(), practiceType ? 'practice' : 'exam', practiceType)
+    const created = createEngine(config)
     const parameters = new URLSearchParams(window.location.search)
     const debugDistance = Number(parameters.get('startDistance'))
     return parameters.get('debug') === '1' && Number.isFinite(debugDistance) && debugDistance > 0
       ? { ...created, scenarioDistanceMeters: debugDistance }
       : created
+  })
+  const [runtime, setRuntime] = useState<AttemptRuntimeContext>(checkpoint?.runtime ?? {
+    originMode: config.mode,
+    guidanceMode: config.initialGuidance,
+    findingContext: config.mode,
   })
   const [manualPaused, setManualPaused] = useState(false)
   const [recentAction, setRecentAction] = useState<ActionType | null>(null)
@@ -245,11 +268,32 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
   const lastCheckpointBucket = useRef(Math.floor(engine.elapsed / 10))
   const finished = useRef(false)
   const scenario = currentScenario(engine)
+  const guidancePlan = getGuidancePlan(scenario.id)
+  const [coach, setCoach] = useState<CoachState | undefined>(() => checkpoint?.coach ?? (config.initialGuidance === 'guided' && guidancePlan ? createCoachState(guidancePlan) : undefined))
+  const coachSummaries = useRef<NonNullable<AttemptRecordV2['guidanceSummary']>>([])
   const urlParameters = new URLSearchParams(window.location.search)
   const requestedDebugScale = Number(urlParameters.get('timeScale'))
   const timeScale = urlParameters.get('debug') === '1'
     ? requestedDebugScale > 0 ? requestedDebugScale : 80
     : 1
+
+  useEffect(() => {
+    if (runtime.guidanceMode !== 'guided' || !guidancePlan) return
+    // The Coach reducer intentionally follows the authoritative Engine snapshot.
+    setCoach((previous) => {
+      if (!previous || previous.planId !== guidancePlan.id) {
+        if (previous && !coachSummaries.current.some((summary) => summary.planId === previous.planId)) {
+          coachSummaries.current.push({ planId: previous.planId, completedStepIds: previous.completedStepIds, missedStepIds: previous.missedStepIds })
+        }
+        return createCoachState(guidancePlan)
+      }
+      const latest = engine.findings.at(-1)
+      const latestFinding = latest && latest.scenarioId === scenario.id
+        ? { ...latest, context: runtime.findingContext }
+        : undefined
+      return reduceCoachState({ coach: previous, plan: guidancePlan, engineState: engine, scenarioActions: engine.scenarioActions, latestFinding })
+    })
+  }, [engine, guidancePlan, runtime.findingContext, runtime.guidanceMode, scenario.id])
 
   const startAmbience = useCallback(() => {
     if (!preferences.ambientSoundEnabled) return
@@ -354,7 +398,20 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
         endControl('accelerate')
         endControl('brake')
         setManualPaused(true)
-        void saveCheckpoint({ attemptId, contentVersion: newmarketCentre.contentVersion, startedAt, savedAt: new Date().toISOString(), state: engineRef.current })
+        const hiddenCheckpoint: AttemptCheckpointV2 = {
+          attemptId,
+          contentVersion: newmarketCentre.contentVersion,
+          startedAt,
+          savedAt: new Date().toISOString(),
+          state: engineRef.current,
+          schemaVersion: 2,
+          config,
+          runtime,
+          status: 'paused',
+          coach,
+          guidancePlanVersion: guidancePlan?.version,
+        }
+        void saveCheckpoint(hiddenCheckpoint)
       }
     }
     window.addEventListener('keydown', keyDown)
@@ -365,7 +422,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
       window.removeEventListener('keyup', keyUp)
       document.removeEventListener('visibilitychange', hidden)
     }
-  }, [attemptId, beginControl, endControl, perform, preferences, startedAt])
+  }, [attemptId, beginControl, coach, config, endControl, guidancePlan?.version, perform, preferences, runtime, startedAt])
 
   useEffect(() => {
     if (!manualPaused && !engine.dangerPending) return
@@ -377,17 +434,33 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
     const bucket = Math.floor(engine.elapsed / 10)
     if (engine.completed || bucket <= lastCheckpointBucket.current) return
     lastCheckpointBucket.current = bucket
-    const checkpointValue = { attemptId, contentVersion: newmarketCentre.contentVersion, startedAt, savedAt: new Date().toISOString(), state: engine }
+    const checkpointValue: AttemptCheckpointV2 = {
+      attemptId,
+      contentVersion: newmarketCentre.contentVersion,
+      startedAt,
+      savedAt: new Date().toISOString(),
+      state: engine,
+      schemaVersion: 2,
+      config,
+      runtime,
+      status: manualPaused ? 'paused' : engine.dangerPending ? 'danger-review' : 'running',
+      coach,
+      guidancePlanVersion: guidancePlan?.version,
+    }
     void saveCheckpoint(checkpointValue)
-  }, [attemptId, engine, startedAt])
+  }, [attemptId, coach, config, engine, guidancePlan?.version, manualPaused, runtime, startedAt])
 
   useEffect(() => {
     if (engine.completed && !finished.current) {
       finished.current = true
       void deleteCheckpoint(attemptId)
-      onFinish(toAttemptRecord(engine, startedAt))
+      const summaries = [...coachSummaries.current]
+      if (coach && !summaries.some((summary) => summary.planId === coach.planId)) {
+        summaries.push({ planId: coach.planId, completedStepIds: coach.completedStepIds, missedStepIds: coach.missedStepIds })
+      }
+      onFinish(toAttemptRecord(engine, startedAt, config, runtime, summaries))
     }
-  }, [attemptId, engine, onFinish, startedAt])
+  }, [attemptId, coach, config, engine, onFinish, runtime, startedAt])
 
   const totalDuration = engine.route.reduce((sum, item) => sum + item.durationSeconds, 0)
   const remaining = totalDuration - engine.elapsed
@@ -406,27 +479,61 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
     ? Math.min(1, engine.laneChangeElapsed / LANE_CHANGE_DURATION_SECONDS)
     : 1
   const keyLabel = (action: ActionType) => preferences.keyBindings.find((binding) => binding.action === action)?.label ?? '—'
+  const coachFrame = coach && guidancePlan && runtime.guidanceMode === 'guided'
+    ? toCoachFrame({ coach, plan: guidancePlan, keyBindings: preferences.keyBindings, subtitlesZh: preferences.subtitlesZh })
+    : undefined
+  const highlightedAction = coachFrame?.visibleSteps.find((step) => step.state === 'current')?.highlightedAction
   const controlClass = (action: ActionType, active = false) => [
     'control-tile',
     checklist.has(action) ? 'used' : '',
     recentAction === action ? 'recent-control' : '',
     active ? 'active-control' : '',
+    highlightedAction === action ? 'coach-highlight' : '',
   ].filter(Boolean).join(' ')
+
+  const guidanceSummary = () => {
+    const summaries = [...coachSummaries.current]
+    if (coach && !summaries.some((summary) => summary.planId === coach.planId)) {
+      summaries.push({ planId: coach.planId, completedStepIds: coach.completedStepIds, missedStepIds: coach.missedStepIds })
+    }
+    return summaries
+  }
+
+  const retryDangerousScene = () => {
+    const finding = [...engine.findings].reverse().find((item) => item.severity === 'dangerous')
+    const variant = finding ? engine.route.find((item) => item.id === finding.scenarioId) : undefined
+    if (!variant) return
+    const existingScope = config.mode === 'practice' && config.scope.kind === 'scenario' ? config.scope : undefined
+    const retryConfig = resolveRunConfig(createRunConfig({
+      centreId: 'newmarket',
+      mode: 'practice',
+      seed: config.seed,
+      scope: {
+        kind: 'scenario',
+        scenarioType: variant.type,
+        variantId: variant.id,
+        practiceSessionId: existingScope?.practiceSessionId ?? `danger-${attemptId}`,
+        roundIndex: (existingScope?.roundIndex ?? 0) + 1,
+        retryOfAttemptId: attemptId,
+      },
+    }))
+    onRetryScene(retryConfig, toAttemptRecord(engine, startedAt, config, runtime, guidanceSummary()))
+  }
 
   return (
     <main id="main-content" className="player-shell">
       <header className="player-header">
         <div><span className="brand-mark small">G</span><strong>G TEST PRACTICE</strong></div>
-        <div className="player-status"><span className="mode-badge">{practiceType ? 'PRACTICE MODE' : 'EXAM MODE'}</span><span>Scene {engine.scenarioIndex + 1}/{engine.route.length}</span><button onClick={() => setManualPaused(true)}>Pause <kbd>Esc</kbd></button></div>
+        <div className="player-status"><span className="mode-badge">{runtime.originMode === 'practice' ? 'GUIDED PRACTICE' : runtime.guidanceMode === 'guided' ? 'PRACTICE CONTINUATION' : 'EXAM MODE'}</span><span>Scene {engine.scenarioIndex + 1}/{engine.route.length}</span><button onClick={() => setManualPaused(true)}>Pause <kbd>Esc</kbd></button></div>
       </header>
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
           <CanvasRoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} lanePosition={engine.lanePosition} laneChangeDirection={laneChangeDirection} laneChangeProgress={laneChangeProgress} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} turnDirection={engine.turnDirection} turnProgress={engine.turnProgress} turnStartDistanceMeters={engine.turnStartDistanceMeters} reducedMotion={preferences.reducedMotion} />
-          <button className="lane-target lane-target-left" disabled={engine.turnDirection !== null || laneChanging || engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
-          <button className="lane-target lane-target-right" disabled={engine.turnDirection !== null || laneChanging || engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
-          {inTurnZone && engine.turnDirection === null && scenario.type === 'multilane-left' && <button className="turn-command turn-command-left" disabled={!canTurnLeft || laneChanging} onClick={() => perform('turn-left')} aria-label="Turn left at the intersection"><span>↰ TURN LEFT</span><small>{canTurnLeft && !laneChanging ? 'turn now' : 'move to left lane first'}</small><kbd>←</kbd></button>}
-          {inTurnZone && engine.turnDirection === null && scenario.type === 'right-on-red' && <button className="turn-command turn-command-right" disabled={!canTurnRight || laneChanging} onClick={() => perform('turn-right')} aria-label="Turn right at the intersection"><span>TURN RIGHT ↱</span><small>{canTurnRight && !laneChanging ? 'turn now' : 'move to right lane first'}</small><kbd>→</kbd></button>}
+          <button className={`lane-target lane-target-left ${highlightedAction === 'lane-left' ? 'coach-highlight' : ''}`} disabled={engine.turnDirection !== null || laneChanging || engine.lane === -1} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className={`lane-target lane-target-right ${highlightedAction === 'lane-right' ? 'coach-highlight' : ''}`} disabled={engine.turnDirection !== null || laneChanging || engine.lane === 1} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
+          {inTurnZone && engine.turnDirection === null && scenario.type === 'multilane-left' && <button className={`turn-command turn-command-left ${highlightedAction === 'turn-left' ? 'coach-highlight' : ''}`} disabled={!canTurnLeft || laneChanging} onClick={() => perform('turn-left')} aria-label="Turn left at the intersection"><span>↰ TURN LEFT</span><small>{canTurnLeft && !laneChanging ? 'turn now' : 'move to left lane first'}</small><kbd>←</kbd></button>}
+          {inTurnZone && engine.turnDirection === null && scenario.type === 'right-on-red' && <button className={`turn-command turn-command-right ${highlightedAction === 'turn-right' ? 'coach-highlight' : ''}`} disabled={!canTurnRight || laneChanging} onClick={() => perform('turn-right')} aria-label="Turn right at the intersection"><span>TURN RIGHT ↱</span><small>{canTurnRight && !laneChanging ? 'turn now' : 'move to right lane first'}</small><kbd>→</kbd></button>}
           <div className="examiner-card" aria-live="polite">
             <span className="examiner-avatar" aria-hidden="true">EX</span>
             <div><small>EXAMINER</small><p>“{scenario.examinerInstruction}”</p>{preferences.subtitlesZh && <span>{scenario.subtitleZh}</span>}</div>
@@ -439,6 +546,7 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
         <div className="mobile-route-progress-card" aria-label={`Practice route map: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
           <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} />
         </div>
+        {coachFrame && <CoachPanel frame={coachFrame} />}
         <aside className="control-deck" aria-label="Driving controls">
           <div className="instrument-panel">
             <div className="speed-readout"><span>SPEED</span><strong>{Math.round(engine.speedKph)}</strong><small><b className="hold-badge">HOLD</b> km/h</small></div>
@@ -460,36 +568,42 @@ function Player({ preferences, practiceType, onFinish, onExit, checkpoint, onLoc
             </div>
           </div>
           <div className="pedals">
-            <button aria-label="Brake" className="brake" onPointerDown={() => beginControl('brake')} onPointerUp={() => endControl('brake')} onPointerCancel={() => endControl('brake')} onPointerLeave={() => endControl('brake')}><span>!</span><strong>BRAKE</strong><kbd>{keyLabel('brake')}</kbd></button>
-            <button aria-label="Accelerate" className="accelerate" onPointerDown={() => beginControl('accelerate')} onPointerUp={() => endControl('accelerate')} onPointerCancel={() => endControl('accelerate')} onPointerLeave={() => endControl('accelerate')}><span>↑</span><strong>ACCELERATE</strong><kbd>{keyLabel('accelerate')}</kbd></button>
+            <button aria-label="Brake" className={`brake ${highlightedAction === 'brake' ? 'coach-highlight' : ''}`} onPointerDown={() => beginControl('brake')} onPointerUp={() => endControl('brake')} onPointerCancel={() => endControl('brake')} onPointerLeave={() => endControl('brake')}><span>!</span><strong>BRAKE</strong><kbd>{keyLabel('brake')}</kbd></button>
+            <button aria-label="Accelerate" className={`accelerate ${highlightedAction === 'accelerate' ? 'coach-highlight' : ''}`} onPointerDown={() => beginControl('accelerate')} onPointerUp={() => endControl('accelerate')} onPointerCancel={() => endControl('accelerate')} onPointerLeave={() => endControl('accelerate')}><span>↑</span><strong>ACCELERATE</strong><kbd>{keyLabel('accelerate')}</kbd></button>
           </div>
-          {engine.stage !== 'exam' && <div className="practice-hint"><strong>Practice checklist</strong><span>{scenario.requiredActions.filter((action) => checklist.has(action)).length}/{scenario.requiredActions.length} expected actions observed</span></div>}
         </aside>
       </section>
 
       {manualPaused && (
         <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="pause-title"><p className="eyebrow">Drive paused</p><h2 id="pause-title">Take a moment.</h2><p>The simulation clock and vehicle controls are stopped.</p><div className="modal-actions"><button className="secondary" onClick={onExit}>Exit drive</button><button className="primary" autoFocus onClick={() => setManualPaused(false)}>Resume</button></div></section></div>
       )}
-      {engine.dangerPending && (
+      {engine.dangerPending && runtime.findingContext === 'exam' && (
         <div className="modal-backdrop"><section className="modal danger-modal" role="alertdialog" aria-modal="true" aria-labelledby="danger-title">
           <span className="danger-icon">!</span><p className="eyebrow">Dangerous moment detected</p><h2 id="danger-title">The exam portion stops here.</h2>
           <p>{engine.findings.at(-1)?.impact}</p><p>You can end and review now, or continue the remaining route as practice. This finding will remain in the report.</p>
-          <div className="modal-actions"><button className="secondary" onClick={() => setEngine((state) => resolveDanger(state, 'end'))}>End & review</button><button className="primary" autoFocus onClick={() => setEngine((state) => resolveDanger(state, 'continue'))}>Continue as practice</button></div>
+          <div className="modal-actions"><button className="secondary" onClick={() => setEngine((state) => resolveDanger(state, 'end'))}>End & review</button><button className="primary" autoFocus onClick={() => { setRuntime((value) => ({ ...value, guidanceMode: 'guided', findingContext: 'practice', continuedAfterDangerAtSeconds: engine.elapsed })); setEngine((state) => resolveDanger(state, 'continue')) }}>Continue as practice</button></div>
         </section></div>
       )}
-      {new URLSearchParams(window.location.search).get('debug') === '1' && <aside className="debug-panel" aria-label="Local debug information">engine 1.0 · content {newmarketCentre.contentVersion} · seed {engine.seed} · segment {engine.scenarioIndex + 1} · {Math.round(engine.elapsed * 1000)}ms · actions {engine.actions.length}</aside>}
+      {engine.dangerPending && runtime.findingContext === 'practice' && (
+        <div className="modal-backdrop"><section className="modal danger-modal" role="alertdialog" aria-modal="true" aria-labelledby="practice-danger-title">
+          <span className="danger-icon">!</span><p className="eyebrow">Guided Practice paused</p><h2 id="practice-danger-title">Review this dangerous moment.</h2>
+          <p>{engine.findings.at(-1)?.impact}</p><p>This is practice—not an exam failure. Retry the same authored situation or continue from the current route state.</p>
+          <div className="modal-actions"><button className="secondary" onClick={retryDangerousScene}>Retry this scene</button><button className="primary" autoFocus onClick={() => setEngine((state) => resolveDanger(state, 'continue'))}>Continue from here</button></div>
+        </section></div>
+      )}
+      {new URLSearchParams(window.location.search).get('debug') === '1' && <aside className="debug-panel" aria-label="Local debug information">engine 1.1 · content {newmarketCentre.contentVersion} · {runtime.originMode}/{runtime.findingContext} · seed {engine.seed} · segment {engine.scenarioIndex + 1} · {Math.round(engine.elapsed * 1000)}ms · actions {engine.actions.length}{coach ? ` · coach ${coach.planId}:${coach.currentStepIndex}` : ''}</aside>}
     </main>
   )
 }
 
-function Report({ attempt, restart, history }: { attempt: AttemptRecord; restart: (type?: ScenarioType) => void; history: () => void }) {
+function Report({ attempt, restart, history }: { attempt: AttemptRecordV2; restart: (type?: ScenarioType) => void; history: () => void }) {
   const dimensions = summarizeDimensions(attempt.findings)
   const issues = attempt.findings.filter((finding) => finding.severity !== 'good')
   const top = [...issues].sort((a, b) => (b.severity === 'dangerous' ? 2 : 1) - (a.severity === 'dangerous' ? 2 : 1)).slice(0, 3)
   const weak = top[0]?.scenarioType
   return (
     <main id="main-content" className="page-shell report-page">
-      <p className="eyebrow">Drive review</p><h1>{attempt.dangerousFindingIds.length ? 'Review the dangerous moments first.' : 'Practice drive complete.'}</h1>
+      <p className="eyebrow">{attempt.mode === 'exam' ? 'Exam-mode review' : 'Guided Practice review'}</p><h1>{attempt.dangerousFindingIds.length ? 'Review the dangerous moments first.' : attempt.mode === 'practice' ? 'Guided Practice complete.' : 'Practice drive complete.'}</h1>
       <p className="page-intro">This is a learning report—not an official score, result, or pass prediction. The original event record stays unchanged if you continued as practice.</p>
       <section className="report-summary">
         <div><strong>{formatTime(attempt.durationSeconds)}</strong><span>driving time</span></div><div><strong>{attempt.scenarioIds.length}</strong><span>scenes attempted</span></div><div><strong>{issues.length}</strong><span>practice findings</span></div><div><strong>{attempt.dangerousFindingIds.length}</strong><span>dangerous moments</span></div>
@@ -504,9 +618,14 @@ function Report({ attempt, restart, history }: { attempt: AttemptRecord; restart
   )
 }
 
-function History({ attempts, practice, remove, clear }: { attempts: AttemptRecord[]; practice: (type: ScenarioType) => void; remove: (id: string) => void; clear: () => void }) {
-  const weak = weakestScenario(attempts)
-  return <main id="main-content" className="page-shell"><p className="eyebrow">Stored only on this device</p><h1>Practice history</h1><p className="page-intro">The most recent ten attempts inform the suggested weak area. You control deletion; the app never uploads or automatically removes attempts.</p><div className="history-actions">{weak && <button className="primary" onClick={() => practice(weak)}>Practise suggested weakness: {scenarioLabels[weak]}</button>}{attempts.length > 0 && <button className="secondary" onClick={clear}>Clear all history</button>}</div><section className="history-list">{attempts.length ? attempts.map((attempt) => <article key={attempt.id}><div><strong>{new Date(attempt.startedAt).toLocaleString()}</strong><span>{attempt.runStage} · {formatTime(attempt.durationSeconds)}</span></div><div><span>{attempt.findings.filter((item) => item.severity !== 'good').length} findings</span><span className={attempt.dangerousFindingIds.length ? 'danger-count' : ''}>{attempt.dangerousFindingIds.length} dangerous</span><button className="text-button" onClick={() => exportAttempt(attempt)}>Export JSON</button><button className="text-button danger-text" onClick={() => remove(attempt.id)}>Delete</button></div></article>) : <div className="empty-state"><h2>No attempts yet</h2><p>Complete a practice drive and its review will appear here.</p></div>}</section></main>
+function History({ attempts, practice, remove, clear }: { attempts: AttemptRecordV2[]; practice: (type: ScenarioType) => void; remove: (id: string) => void; clear: () => void }) {
+  const suggestion = weakestScenarioSuggestion(attempts)
+  const label = (attempt: AttemptRecordV2) => attempt.mode === 'exam'
+    ? attempt.runStage === 'continued-practice' ? 'Exam + practice continuation' : 'Exam'
+    : attempt.scope.kind === 'scenario'
+      ? `Scenario practice · round ${attempt.scope.roundIndex}`
+      : 'Guided full route'
+  return <main id="main-content" className="page-shell"><p className="eyebrow">Stored only on this device</p><h1>Practice history</h1><p className="page-intro">Exam evidence is used first for suggestions. Practice evidence is used only when no exam finding exists, and its source is shown. You control deletion; nothing is uploaded.</p><div className="history-actions">{suggestion.scenarioType && <button className="primary" onClick={() => practice(suggestion.scenarioType!)}>Practise suggested weakness: {scenarioLabels[suggestion.scenarioType]} · based on {suggestion.source}</button>}{attempts.length > 0 && <button className="secondary" onClick={clear}>Clear all history</button>}</div><section className="history-list">{attempts.length ? attempts.map((attempt) => <article key={attempt.id} data-practice-session={attempt.scope.kind === 'scenario' ? attempt.scope.practiceSessionId : undefined}><div><strong>{new Date(attempt.startedAt).toLocaleString()}</strong><span>{label(attempt)} · {formatTime(attempt.durationSeconds)}</span>{attempt.scope.kind === 'scenario' && <small>{scenarioLabels[attempt.scope.scenarioType]} · session {attempt.scope.practiceSessionId.slice(-8)}</small>}</div><div><span>{attempt.findings.filter((item) => item.severity !== 'good').length} findings</span><span className={attempt.dangerousFindingIds.length ? 'danger-count' : ''}>{attempt.dangerousFindingIds.length} dangerous</span><button className="text-button" onClick={() => exportAttempt(attempt)}>Export JSON</button><button className="text-button danger-text" onClick={() => remove(attempt.id)}>Delete</button></div></article>) : <div className="empty-state"><h2>No attempts yet</h2><p>Complete a practice drive and its review will appear here.</p></div>}</section></main>
 }
 
 function Settings({ preferences, update }: { preferences: Preferences; update: (value: Preferences) => void }) {
@@ -530,53 +649,104 @@ function Settings({ preferences, update }: { preferences: Preferences; update: (
 export default function App() {
   const [view, setView] = useState<View>('home')
   const [preferences, setPreferences] = useState(loadPreferences)
-  const [attempts, setAttempts] = useState<AttemptRecord[]>([])
-  const [report, setReport] = useState<AttemptRecord>()
-  const [practiceType, setPracticeType] = useState<ScenarioType>()
-  const [checkpoint, setCheckpoint] = useState<AttemptCheckpoint<EngineState>>()
+  const [attempts, setAttempts] = useState<AttemptRecordV2[]>([])
+  const [report, setReport] = useState<AttemptRecordV2>()
+  const [roundSummary, setRoundSummary] = useState<AttemptRecordV2>()
+  const [draftConfig, setDraftConfig] = useState<RunConfig>()
+  const [activeConfig, setActiveConfig] = useState<ResolvedRunConfig>()
+  const [checkpoint, setCheckpoint] = useState<AttemptCheckpointV2>()
+  const [playerKey, setPlayerKey] = useState(0)
 
   const refreshAttempts = useCallback(() => getAttempts().then(setAttempts).catch(() => setAttempts([])), [])
   useEffect(() => {
     void refreshAttempts()
     void getLatestCheckpoint<EngineState>().then((value) => {
-      if (value?.contentVersion === newmarketCentre.contentVersion) setCheckpoint(value)
+      const normalized = value ? normalizeEngineCheckpoint(value) : undefined
+      if (normalized && ['1.0.0', newmarketCentre.contentVersion].includes(normalized.contentVersion)) setCheckpoint(normalized)
     }).catch(() => setCheckpoint(undefined))
   }, [refreshAttempts])
   useEffect(() => { document.documentElement.classList.toggle('high-contrast', preferences.highContrast) }, [preferences.highContrast])
 
   const updatePreferences = (value: Preferences) => { setPreferences(value); savePreferences(value) }
-  const openPractice = (type: ScenarioType) => {
+  const newSessionId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `practice-${Date.now()}`
+  const clearCheckpoint = () => {
     if (checkpoint) void deleteCheckpoint(checkpoint.attemptId)
     setCheckpoint(undefined)
-    setPracticeType(type)
+  }
+  const openPractice = (type: ScenarioType) => {
+    clearCheckpoint()
+    setDraftConfig(createRunConfig({ centreId: 'newmarket', mode: 'practice', seed: seedFromUrl(), scope: { kind: 'scenario', scenarioType: type, practiceSessionId: newSessionId(), roundIndex: 1 } }))
     setView('briefing')
   }
   const startFull = () => {
-    if (checkpoint) void deleteCheckpoint(checkpoint.attemptId)
-    setCheckpoint(undefined)
-    setPracticeType(undefined)
+    clearCheckpoint()
+    setDraftConfig(undefined)
+    setActiveConfig(undefined)
     setView('centre')
   }
-  const finish = useCallback((attempt: AttemptRecord) => {
+  const finish = useCallback((attempt: AttemptRecordV2) => {
     setReport(attempt)
-    setView('report')
+    if (attempt.mode === 'practice' && attempt.scope.kind === 'scenario') {
+      setRoundSummary(attempt)
+      setView('round-summary')
+    } else {
+      setView('report')
+    }
     void saveAttempt(attempt).then(refreshAttempts)
   }, [refreshAttempts])
-  const restart = (type?: ScenarioType) => { setPracticeType(type); setReport(undefined); setView(type ? 'briefing' : 'centre') }
-  const weak = useMemo(() => weakestScenario(attempts), [attempts])
+  const retryFromDanger = (config: ResolvedRunConfig, attempt: AttemptRecordV2) => {
+    void saveAttempt(attempt).then(refreshAttempts)
+    clearCheckpoint()
+    setActiveConfig(config)
+    setDraftConfig(config)
+    setPlayerKey((value) => value + 1)
+    setView('player')
+  }
+  const restart = (type?: ScenarioType) => {
+    setReport(undefined)
+    if (type) openPractice(type)
+    else startFull()
+  }
+  const suggestion = useMemo(() => weakestScenarioSuggestion(attempts), [attempts])
+
+  const startDraft = () => {
+    if (!draftConfig) return
+    setActiveConfig(resolveRunConfig(draftConfig))
+    setPlayerKey((value) => value + 1)
+    setView('player')
+  }
+
+  const retryRound = (strategy: 'same' | 'next') => {
+    if (!roundSummary || !activeConfig || activeConfig.mode !== 'practice' || activeConfig.scope.kind !== 'scenario') return
+    const restarted = restartScenario({ source: createEngine(activeConfig), config: activeConfig, strategy })
+    if (restarted.config.mode !== 'practice' || restarted.config.scope.kind !== 'scenario') return
+    const config: ResolvedRunConfig = {
+      ...restarted.config,
+      scope: { ...restarted.config.scope, retryOfAttemptId: roundSummary.id },
+    }
+    setRoundSummary(undefined)
+    setReport(undefined)
+    setDraftConfig(config)
+    setActiveConfig(config)
+    setPlayerKey((value) => value + 1)
+    setView('player')
+  }
 
   return (
     <>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <Header view={view} navigate={setView} />
-      {view === 'home' && <Home start={startFull} weakType={weak} practiceWeak={() => weak && openPractice(weak)} resume={checkpoint ? () => { setPracticeType(checkpoint.state.route.length === 1 ? checkpoint.state.route[0].type : undefined); setView('player') } : undefined} />}
-      {view === 'centre' && <CentrePicker onSelect={() => setView('briefing')} />}
-      {view === 'briefing' && <Briefing preferences={preferences} practiceType={practiceType} back={() => setView(practiceType ? 'home' : 'centre')} start={() => setView('player')} />}
-      {view === 'player' && <Player preferences={preferences} practiceType={practiceType} checkpoint={checkpoint} onFinish={(attempt) => { setCheckpoint(undefined); finish(attempt) }} onExit={() => setView('home')} onLockConflict={() => { window.alert('Another tab is already running a practice drive.'); setView('home') }} />}
+      {view === 'home' && <Home start={startFull} weakType={suggestion.scenarioType} practiceWeak={() => suggestion.scenarioType && openPractice(suggestion.scenarioType)} resume={checkpoint ? () => { setActiveConfig(checkpoint.config); setDraftConfig(checkpoint.config); setView('player') } : undefined} />}
+      {view === 'centre' && <CentrePicker onSelect={() => setView('mode-select')} />}
+      {view === 'mode-select' && <ModeSelect practiceEnabled={PRACTICE_MODE_ENABLED} back={() => setView('centre')} exam={() => { setDraftConfig(createRunConfig({ centreId: 'newmarket', mode: 'exam', seed: seedFromUrl() })); setView('briefing') }} practice={() => setView('practice-select')} />}
+      {view === 'practice-select' && <PracticeSelect back={() => setView('mode-select')} suggested={suggestion.scenarioType} source={suggestion.source} fullRoute={() => { setDraftConfig(createRunConfig({ centreId: 'newmarket', mode: 'practice', seed: seedFromUrl(), scope: { kind: 'full-route' } })); setView('briefing') }} scenario={openPractice} />}
+      {view === 'briefing' && draftConfig && <Briefing preferences={preferences} config={draftConfig} back={() => setView(draftConfig.mode === 'practice' ? 'practice-select' : 'mode-select')} start={startDraft} />}
+      {view === 'player' && activeConfig && <Player key={`${activeConfig.seed}-${activeConfig.scope.kind === 'scenario' ? activeConfig.scope.roundIndex : 0}-${playerKey}`} preferences={preferences} config={activeConfig} checkpoint={checkpoint} onFinish={(attempt) => { setCheckpoint(undefined); finish(attempt) }} onRetryScene={retryFromDanger} onExit={() => setView('home')} onLockConflict={() => { window.alert('Another tab is already running a practice drive.'); setView('home') }} />}
+      {view === 'round-summary' && roundSummary && <PracticeRoundSummary attempt={roundSummary} retrySame={() => retryRound('same')} nextVariation={() => retryRound('next')} chooseAnother={() => { setRoundSummary(undefined); setView('practice-select') }} review={() => setView('report')} />}
       {view === 'report' && report && <Report attempt={report} restart={restart} history={() => setView('history')} />}
       {view === 'history' && <History attempts={attempts} practice={openPractice} remove={(id) => { if (window.confirm('Delete this local attempt?')) void deleteAttempt(id).then(refreshAttempts) }} clear={() => { if (window.confirm('Clear all local attempts and checkpoints?')) void clearAttempts().then(() => { setCheckpoint(undefined); refreshAttempts() }) }} />}
       {view === 'settings' && <Settings preferences={preferences} update={updatePreferences} />}
-      {view !== 'player' && <footer><p>{newmarketCentre.disclaimer}</p><p>Content v{newmarketCentre.contentVersion} · No official score or route claim.</p></footer>}
+      {view !== 'player' && <footer><p>{newmarketCentre.disclaimer}</p><p>App v1.1.0 · Content v{newmarketCentre.contentVersion} · No official score or route claim.</p></footer>}
     </>
   )
 }

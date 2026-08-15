@@ -1,9 +1,13 @@
 import { newmarketCentre, scenarioOrder } from '../content/data'
 import type {
   ActionType,
-  AttemptRecord,
+  AttemptRecordV2,
+  AttemptRuntimeContext,
   Finding,
   FindingDimension,
+  PracticeScope,
+  ResolvedRunConfig,
+  RunConfig,
   InputAction,
   RunStage,
   ScenarioType,
@@ -54,19 +58,55 @@ function mulberry32(seed: number) {
   }
 }
 
-export function buildRoute(seed: number, onlyType?: ScenarioType): ScenarioVariant[] {
+export function buildRoute(seed: number, onlyType?: ScenarioType, variantId?: string): ScenarioVariant[] {
   const random = mulberry32(seed)
   const types = onlyType ? [onlyType] : scenarioOrder
   return types.map((type) => {
     const choices = newmarketCentre.variants[type]
+    if (variantId) {
+      const selected = choices.find((candidate) => candidate.id === variantId)
+      if (!selected) throw new Error(`Variant ${variantId} does not belong to ${type}`)
+      return selected
+    }
     return choices[Math.floor(random() * choices.length)]
   })
 }
 
-export function createEngine(seed: number, stage: RunStage = 'exam', onlyType?: ScenarioType): EngineState {
+export function createRunConfig(input: {
+  centreId: 'newmarket'
+  mode: 'exam' | 'practice'
+  scope?: PracticeScope
+  seed: number
+}): RunConfig {
+  if (input.mode === 'exam') return { mode: 'exam', centreId: input.centreId, scope: { kind: 'full-route' }, initialGuidance: 'off', seed: input.seed }
+  return { mode: 'practice', centreId: input.centreId, scope: input.scope ?? { kind: 'full-route' }, initialGuidance: 'guided', seed: input.seed }
+}
+
+export function resolveRunConfig(config: RunConfig): ResolvedRunConfig {
+  if (config.mode === 'exam') return config
+  if (config.scope.kind === 'full-route') return config as ResolvedRunConfig
+  const choices = newmarketCentre.variants[config.scope.scenarioType]
+  const variantId = config.scope.variantId ?? choices[Math.floor(mulberry32(config.seed)() * choices.length)].id
+  if (!choices.some((variant) => variant.id === variantId)) throw new Error(`Unknown ${config.scope.scenarioType} variant ${variantId}`)
+  return { ...config, scope: { ...config.scope, variantId } }
+}
+
+export function createEngine(config: ResolvedRunConfig): EngineState
+export function createEngine(seed: number, stage?: RunStage, onlyType?: ScenarioType): EngineState
+export function createEngine(configOrSeed: ResolvedRunConfig | number, legacyStage: RunStage = 'exam', legacyType?: ScenarioType): EngineState {
+  const config = typeof configOrSeed === 'number'
+    ? resolveRunConfig(createRunConfig({
+        centreId: 'newmarket',
+        mode: legacyStage === 'exam' ? 'exam' : 'practice',
+        scope: legacyType ? { kind: 'scenario', scenarioType: legacyType, practiceSessionId: `legacy-${configOrSeed}`, roundIndex: 1 } : { kind: 'full-route' },
+        seed: configOrSeed,
+      }))
+    : configOrSeed
+  const scenarioScope = config.mode === 'practice' && config.scope.kind === 'scenario' ? config.scope : undefined
+  const stage: RunStage = config.mode === 'exam' ? 'exam' : legacyStage === 'continued-practice' ? 'continued-practice' : 'practice'
   return {
-    seed,
-    route: buildRoute(seed, onlyType),
+    seed: config.seed,
+    route: buildRoute(config.seed, scenarioScope?.scenarioType, scenarioScope?.variantId),
     scenarioIndex: 0,
     scenarioElapsed: 0,
     scenarioDistanceMeters: 0,
@@ -241,7 +281,7 @@ function evaluateScenario(state: EngineState): Finding[] {
 
 function completeScenario(state: EngineState): EngineState {
   const findings = evaluateScenario(state)
-  const dangerPending = state.stage === 'exam' && findings.some((finding) => finding.severity === 'dangerous')
+  const dangerPending = findings.some((finding) => finding.severity === 'dangerous')
   const isFinal = state.scenarioIndex >= state.route.length - 1
 
   return {
@@ -317,32 +357,112 @@ export function resolveDanger(state: EngineState, choice: 'end' | 'continue'): E
   if (!state.dangerPending) return state
   return {
     ...state,
-    stage: choice === 'continue' ? 'continued-practice' : state.stage,
+    stage: choice === 'continue' && state.stage === 'exam' ? 'continued-practice' : state.stage,
     paused: false,
     dangerPending: false,
     completed: choice === 'end' || state.scenarioIndex >= state.route.length - 1,
   }
 }
 
-export function toAttemptRecord(state: EngineState, startedAt: string): AttemptRecord {
+function inferredConfig(state: EngineState): ResolvedRunConfig {
+  if (state.stage === 'exam') return resolveRunConfig(createRunConfig({ centreId: 'newmarket', mode: 'exam', seed: state.seed }))
+  const only = state.route.length === 1 ? state.route[0] : undefined
+  return resolveRunConfig(createRunConfig({
+    centreId: 'newmarket',
+    mode: 'practice',
+    seed: state.seed,
+    scope: only
+      ? { kind: 'scenario', scenarioType: only.type, variantId: only.id, practiceSessionId: `legacy-${state.seed}`, roundIndex: 1 }
+      : { kind: 'full-route' },
+  }))
+}
+
+export function toAttemptRecord(
+  state: EngineState,
+  startedAt: string,
+  config: ResolvedRunConfig = inferredConfig(state),
+  runtime: AttemptRuntimeContext = {
+    originMode: config.mode,
+    guidanceMode: config.initialGuidance,
+    findingContext: config.mode,
+    continuedAfterDangerAtSeconds: state.stage === 'continued-practice' ? state.elapsed : undefined,
+  },
+  guidanceSummary: AttemptRecordV2['guidanceSummary'] = [],
+): AttemptRecordV2 {
   const dangerousFindingIds = state.findings
     .filter((finding) => finding.severity === 'dangerous')
     .map((finding) => finding.id)
+  const runStage: RunStage = runtime.originMode === 'practice'
+    ? 'practice'
+    : runtime.continuedAfterDangerAtSeconds === undefined
+      ? 'exam'
+      : 'continued-practice'
+  const findings = state.findings.map((finding) => ({
+    ...finding,
+    context: config.mode === 'practice'
+      ? 'practice' as const
+      : runtime.continuedAfterDangerAtSeconds !== undefined && finding.atSeconds > runtime.continuedAfterDangerAtSeconds
+        ? 'practice' as const
+        : 'exam' as const,
+  }))
+  const scope = config.mode === 'practice' && config.scope.kind === 'scenario'
+    ? {
+        kind: 'scenario' as const,
+        scenarioType: config.scope.scenarioType,
+        variantId: config.scope.variantId,
+        practiceSessionId: config.scope.practiceSessionId,
+        roundIndex: config.scope.roundIndex,
+        retryOfAttemptId: config.scope.retryOfAttemptId,
+      }
+    : { kind: 'full-route' as const }
   return {
+    schemaVersion: 2,
     id: `${state.seed}-${startedAt}`,
     centreId: 'newmarket',
     contentVersion: newmarketCentre.contentVersion,
     seed: state.seed,
     startedAt,
     completedAt: state.completed ? new Date().toISOString() : undefined,
-    runStage: state.stage,
+    runStage,
+    mode: runtime.originMode,
+    scope,
+    continuedAfterDangerAtSeconds: runtime.continuedAfterDangerAtSeconds,
     durationSeconds: state.elapsed,
     scenarioIds: state.route.map((scenario) => scenario.id),
     actions: state.actions,
-    findings: state.findings,
+    findings,
     dangerousFindingIds,
     completed: state.completed,
+    guidanceSummary,
+    migrationSource: 'v2',
   }
+}
+
+function hashSeed(value: string): number {
+  let hash = 2166136261
+  for (const char of value) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+  return hash >>> 0
+}
+
+export function restartScenario(input: {
+  source: Readonly<EngineState>
+  config: ResolvedRunConfig
+  strategy: 'same' | 'next'
+}): { config: ResolvedRunConfig; state: EngineState } {
+  if (input.config.mode !== 'practice' || input.config.scope.kind !== 'scenario') throw new Error('Scenario retry requires focused practice')
+  const current = input.config.scope
+  const variants = newmarketCentre.variants[current.scenarioType]
+  const currentIndex = variants.findIndex((variant) => variant.id === current.variantId)
+  if (currentIndex < 0) throw new Error(`Retry source ${current.variantId} is unavailable`)
+  const roundIndex = current.roundIndex + 1
+  const variantId = input.strategy === 'same' ? current.variantId : variants[(currentIndex + 1) % variants.length].id
+  const seed = input.strategy === 'same' ? input.config.seed : hashSeed(`${current.practiceSessionId}:${roundIndex}:${variantId}`)
+  const config: ResolvedRunConfig = {
+    ...input.config,
+    seed,
+    scope: { ...current, variantId, roundIndex, retryOfAttemptId: `${input.source.seed}` },
+  }
+  return { config, state: createEngine(config) }
 }
 
 export function summarizeDimensions(findings: Finding[]): Record<FindingDimension, number> {
