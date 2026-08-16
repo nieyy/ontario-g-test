@@ -24,6 +24,7 @@ const actionStep = (
   titleZh: string,
   instructionZh: string,
   phase: GuidanceStep['phase'] = 'act',
+  startsWhen: GuidanceStep['startsWhen'] = [],
 ): GuidanceStep => ({
   id,
   phase,
@@ -32,7 +33,7 @@ const actionStep = (
   instructionEn,
   instructionZh,
   highlightedAction: action,
-  startsWhen: [],
+  startsWhen,
   completeWhen: { kind: 'action', action },
   oppositeActions: opposite(action),
   correctiveFeedbackEn: `Use ${titleEn.toLowerCase()} before committing to the manoeuvre.`,
@@ -70,7 +71,7 @@ const plan = (
 export const guidancePlans: GuidancePlan[] = [
   plan('right-on-red-v1', 'right-on-red', ['right-on-red-1', 'right-on-red-2', 'right-on-red-3'], [
     ...mss('right'),
-    actionStep('right-position', 'lane-right', 'Move right', 'Move one lane right into the correct turning position.', '进入右侧车道', '向右移动一个车道，进入正确转弯位置。'),
+    actionStep('right-position', 'lane-right', 'Move right', 'Move one lane right into the correct turning position.', '进入右侧车道', '向右移动一个车道，进入正确转弯位置。', 'act', [{ kind: 'lane-transition-available', direction: 'right' }]),
     actionStep('right-brake', 'brake', 'Progressive brake', 'Brake progressively and make a complete stop at the red light.', '渐进制动', '平稳减速，并在红灯前完全停车。'),
     actionStep('right-turn', 'turn-right', 'Turn when safe', 'When the turn control appears and the way is safe, turn right.', '确认安全后右转', '右转操作出现并确认安全后右转。', 'confirm'),
   ]),
@@ -84,14 +85,14 @@ export const guidancePlans: GuidancePlan[] = [
   ]),
   plan('multilane-left-v1', 'multilane-left', ['multilane-left-1', 'multilane-left-2', 'multilane-left-3'], [
     ...mss('left'),
-    actionStep('left-position', 'lane-left', 'Move left', 'Move one lane left into the left-turn position.', '进入左侧车道', '向左移动一个车道，进入左转位置。'),
+    actionStep('left-position', 'lane-left', 'Move left', 'Move one lane left into the left-turn position.', '进入左侧车道', '向左移动一个车道，进入左转位置。', 'act', [{ kind: 'lane-transition-available', direction: 'left' }]),
     actionStep('left-speed', 'brake', 'Adjust speed', 'Reduce speed progressively before the turn.', '调整速度', '转弯前平稳降低速度。'),
     actionStep('left-turn', 'turn-left', 'Turn left', 'When the turn control appears, complete the left turn.', '左转', '左转操作出现后完成左转。', 'confirm'),
   ]),
   plan('freeway-merge-v1', 'freeway-merge', ['freeway-merge-1', 'freeway-merge-2', 'freeway-merge-3'], [
     ...mss('left'),
     actionStep('merge-speed', 'accelerate', 'Match traffic speed', 'Build speed smoothly toward the authored traffic flow.', '匹配车流速度', '平稳加速，接近教学场景中的主线车流速度。'),
-    actionStep('merge-left', 'lane-left', 'Merge left', 'Move one lane left when the merge control is available.', '向左汇入', '可以变道时向左移动一个车道。'),
+    actionStep('merge-left', 'lane-left', 'Merge left', 'Move one lane left when the merge control is available.', '向左汇入', '可以变道时向左移动一个车道。', 'act', [{ kind: 'lane-transition-available', direction: 'left' }]),
   ]),
   plan('slow-lead-stay-v1', 'slow-lead', ['slow-lead-1', 'slow-lead-3'], [
     actionStep('slow-mirror', 'mirror-left', 'Assess behind', 'Check the left mirror while maintaining space behind the lead vehicle.', '观察后方', '与前车保持空间，同时观察左侧后方。', 'prepare'),
@@ -103,7 +104,7 @@ export const guidancePlans: GuidancePlan[] = [
   ]),
   plan('freeway-exit-v1', 'freeway-exit', ['freeway-exit-1', 'freeway-exit-2', 'freeway-exit-3'], [
     ...mss('right'),
-    actionStep('exit-right', 'lane-right', 'Enter the exit lane', 'Move one lane right into the exit lane.', '进入出口车道', '向右移动一个车道，进入出口车道。'),
+    actionStep('exit-right', 'lane-right', 'Enter the exit lane', 'Move one lane right into the exit lane.', '进入出口车道', '向右移动一个车道，进入出口车道。', 'act', [{ kind: 'lane-transition-available', direction: 'right' }]),
     actionStep('exit-brake', 'brake', 'Reduce speed on the exit', 'After entering the exit lane, brake progressively.', '出口减速', '进入出口车道后再平稳减速。'),
   ]),
 ]

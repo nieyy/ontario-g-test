@@ -1,10 +1,14 @@
 import { scenarioLabels } from '../content/data'
 import type { ScenarioVariant } from '../content/types'
+import type { RoadPosition } from '../content/roadProfiles/types'
+import { getRouteMiniMap } from '../domain/routeMiniMap'
 
 type Props = {
   route: ScenarioVariant[]
   scenarioIndex: number
   scenarioElapsed: number
+  roadProfileEnabled?: boolean
+  roadPosition?: RoadPosition
 }
 
 const schematicPoints = [
@@ -16,7 +20,26 @@ const schematicPoints = [
   { x: 112, y: 20 },
 ]
 
-export function RouteMiniMap({ route, scenarioIndex, scenarioElapsed }: Props) {
+export function RouteMiniMap({ route, scenarioIndex, scenarioElapsed, roadProfileEnabled = false, roadPosition }: Props) {
+  if (roadProfileEnabled && roadPosition) {
+    const model = getRouteMiniMap(roadPosition)
+    return (
+      <div className="route-mini-map" aria-label={`Newmarket-inspired teaching route. Current road: ${model.currentLabel}.`}>
+        <div><small>NEWMARKET-INSPIRED ROUTE</small><span aria-hidden="true">N ↑</span></div>
+        <svg viewBox="0 0 126 88" role="img" aria-label="Schematic teaching route map; not an official test route">
+          <path className="map-street map-street-a" d="M 4 72 H 122 M 42 84 V 8 M 4 46 H 122 M 76 84 V 8 M 4 20 H 122" />
+          <polyline className="map-route" points={model.points.map((point) => `${point.x},${point.y}`).join(' ')} />
+          {model.nodes.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} className={`map-node ${point.state === 'upcoming' ? '' : point.state}`} cx={point.x} cy={point.y} r="3.2"><title>{point.label}</title></circle>)}
+          <g className="map-vehicle" transform={`translate(${model.vehicle.x} ${model.vehicle.y})`}>
+            <circle r="5.5" />
+            <path d="M 0 -3 L 2.5 2.5 L 0 1.5 L -2.5 2.5 Z" />
+          </g>
+        </svg>
+        <strong>{model.currentLabel}</strong>
+        <small>Teaching approximation · not an official route</small>
+      </div>
+    )
+  }
   const points = schematicPoints.slice(0, Math.max(1, Math.min(route.length, schematicPoints.length)))
   const currentIndex = Math.min(scenarioIndex, points.length - 1)
   const from = points[currentIndex]

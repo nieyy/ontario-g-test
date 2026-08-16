@@ -1,0 +1,12 @@
+# Release notes
+
+## 1.2.0 — 2026-08-16
+
+- Added the versioned `newmarket-road-profile-v1` authored teaching corridor.
+- Replaced the production fixed three-lane road with dynamic one-, two-, three-, turn-pocket, merge, and exit lane structures.
+- Made `RoadPosition` and stable `laneId` the source for Canvas, controls, coaching facts, checkpoint state, and the route mini-map.
+- Anchored road surfaces, lane markings, arrows, stop lines, intersections, and signals in one RoadFrame coordinate system.
+- Added checkpoint schema v3 with conservative v2 migration and a one-release 1.1 rollback path.
+- Added strict road-content validation, geometry/engine/mini-map tests, and desktop/mobile visual E2E coverage.
+
+This release remains an independent teaching tool. It does not contain an official, recorded, guaranteed, or predicted DriveTest route.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createEngine } from '../domain/engine'
+import { createEngine, createRunConfig, resolveRunConfig, type EngineState } from '../domain/engine'
 import { defaultPreferences, loadPreferences, normalizeAttemptRecord, normalizeEngineCheckpoint, savePreferences, weakestScenario, weakestScenarioSuggestion } from './storage'
 import type { AttemptRecord } from '../content/types'
 
@@ -104,9 +104,52 @@ describe('local data services', () => {
   it('normalizes a v1 checkpoint while preserving its legacy stage for rollback', () => {
     const state = createEngine(7, 'practice', 'right-on-red')
     const checkpoint = normalizeEngineCheckpoint({ attemptId: 'legacy-checkpoint', contentVersion: '1.0.0', startedAt: '2026-08-12T00:00:00.000Z', savedAt: '2026-08-12T00:00:01.000Z', state })
-    expect(checkpoint?.schemaVersion).toBe(2)
+    expect(checkpoint?.schemaVersion).toBe(3)
     expect(checkpoint?.state.stage).toBe('practice')
     expect(checkpoint?.config.mode).toBe('practice')
     expect(checkpoint?.config.scope).toMatchObject({ kind: 'scenario', variantId: state.route[0].id })
+    expect(checkpoint?.state.roadPosition.laneId).toBe('parking-access')
+  })
+
+  it('migrates an unambiguous v2 checkpoint to schema v3 and preserves rollback fields', () => {
+    const config = resolveRunConfig(createRunConfig({ centreId: 'newmarket', mode: 'practice', seed: 9, scope: { kind: 'scenario', scenarioType: 'right-on-red', practiceSessionId: 'v2', roundIndex: 1 } }))
+    const state = structuredClone(createEngine(config)) as Partial<EngineState>
+    delete state.roadPosition
+    delete state.laneOffsetM
+    delete state.laneChangeFromOffsetM
+    delete state.roadProfileEnabled
+    const migrated = normalizeEngineCheckpoint({
+      attemptId: 'v2', contentVersion: '1.1.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
+      schemaVersion: 2, config, runtime: { originMode: 'practice', guidanceMode: 'guided', findingContext: 'practice' }, status: 'running', state: state as EngineState,
+    })
+    expect(migrated).toMatchObject({ schemaVersion: 3, roadProfileId: 'newmarket-road-profile-v1', roadProfileVersion: '1.0.0' })
+    expect(migrated?.state.route).toHaveLength(1)
+    expect(migrated?.state.lane).toBe(0)
+  })
+
+  it('refuses an ambiguous two-lane v2 checkpoint without deleting history', () => {
+    const config = resolveRunConfig(createRunConfig({ centreId: 'newmarket', mode: 'practice', seed: 10, scope: { kind: 'scenario', scenarioType: 'yellow-light', practiceSessionId: 'ambiguous', roundIndex: 1 } }))
+    const state = structuredClone(createEngine(config)) as Partial<EngineState>
+    delete state.roadPosition
+    delete state.laneOffsetM
+    delete state.laneChangeFromOffsetM
+    delete state.roadProfileEnabled
+    const migrated = normalizeEngineCheckpoint({
+      attemptId: 'ambiguous', contentVersion: '1.1.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
+      schemaVersion: 2, config, runtime: { originMode: 'practice', guidanceMode: 'guided', findingContext: 'practice' }, status: 'running', state: state as EngineState,
+    })
+    expect(migrated).toBeUndefined()
+  })
+
+  it('reads a valid v3 checkpoint and rejects a mismatched profile', () => {
+    const config = resolveRunConfig(createRunConfig({ centreId: 'newmarket', mode: 'exam', seed: 11 }))
+    const state = createEngine(config)
+    const base = {
+      attemptId: 'v3', contentVersion: '1.2.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
+      schemaVersion: 3 as const, config, runtime: { originMode: 'exam' as const, guidanceMode: 'off' as const, findingContext: 'exam' as const }, status: 'running' as const,
+      state, roadProfileId: 'newmarket-road-profile-v1', roadProfileVersion: '1.0.0', routeSeed: 11,
+    }
+    expect(normalizeEngineCheckpoint(base)?.schemaVersion).toBe(3)
+    expect(normalizeEngineCheckpoint({ ...base, roadProfileId: 'unknown' })).toBeUndefined()
   })
 })

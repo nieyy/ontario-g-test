@@ -5,6 +5,7 @@ import type {
   ScenarioType,
   ScenarioVariant,
 } from './types'
+import { newmarketRouteBindings } from './roadProfiles/newmarket'
 
 const checkedOn = '2026-08-12'
 
@@ -46,6 +47,7 @@ const variants = (
     requiredActions,
     dangerousWhenMissing,
     evidence: authoredEvidence,
+    routeBinding: newmarketRouteBindings[type],
     ...extras[index],
   }))
 
@@ -56,7 +58,7 @@ export const newmarketCentre: CentreProfile = {
   region: 'Central Ontario',
   services: ['G2', 'G'],
   routeStatus: 'playable',
-  contentVersion: '1.1.0',
+  contentVersion: '1.2.0',
   disclaimer:
     'This independent training tool is not affiliated with DriveTest or the Government of Ontario. Road scenes are authored approximations, not official or predicted test routes.',
   evidence: [officialCentreEvidence, authoredEvidence],

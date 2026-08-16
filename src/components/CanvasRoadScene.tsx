@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { ActionType, ScenarioVariant } from '../content/types'
+import type { RoadPosition } from '../content/roadProfiles/types'
+import { buildRoadFrame, type RoadFrame } from '../domain/roadFrame'
+import { activeForwardLanes, getRoadFacts } from '../domain/roadModel'
 import {
   INTERSECTION_DISTANCE_METERS,
   INTERSECTION_HALF_DEPTH_METERS,
@@ -27,6 +30,9 @@ type Props = {
   turnProgress: number
   turnStartDistanceMeters: number | null
   reducedMotion: boolean
+  roadProfileEnabled: boolean
+  roadPosition: RoadPosition
+  laneOffsetM: number
 }
 
 const INTERSECTION_TYPES = new Set(['right-on-red', 'yellow-light', 'multilane-left'])
@@ -222,6 +228,106 @@ function drawTrafficLight(ctx: CanvasRenderingContext2D, camera: CameraPose, vie
   return true
 }
 
+function markingStyle(marking: string) {
+  if (marking === 'single-yellow' || marking === 'double-yellow') return { colour: '#ffd948', width: marking === 'double-yellow' ? 0.22 : 0.15 }
+  if (marking === 'curb') return { colour: '#f4f1df', width: 0.19 }
+  if (marking === 'solid-white' || marking === 'dashed-white') return { colour: '#f5f1df', width: 0.13 }
+  return undefined
+}
+
+function drawProfileRoad(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewport: Viewport, distance: number) {
+  const pairs = frame.slices.slice(0, -1).map((slice, index) => ({ from: slice, to: frame.slices[index + 1] })).sort((left, right) => right.from.sM - left.from.sM)
+  for (const pair of pairs) {
+    projectPolygon(ctx, [
+      { x: pair.from.leftEdgeX, z: pair.from.centre.z },
+      { x: pair.from.rightEdgeX, z: pair.from.centre.z },
+      { x: pair.to.rightEdgeX, z: pair.to.centre.z },
+      { x: pair.to.leftEdgeX, z: pair.to.centre.z },
+    ], frame.camera, viewport, '#343b41')
+  }
+
+  if (frame.intersection) {
+    const halfDepth = frame.intersection.crossRoadWidthM / 2
+    projectPolygon(ctx, [
+      { x: frame.intersection.centre.x - 90, z: frame.intersection.centre.z - halfDepth },
+      { x: frame.intersection.centre.x + 90, z: frame.intersection.centre.z - halfDepth },
+      { x: frame.intersection.centre.x + 90, z: frame.intersection.centre.z + halfDepth },
+      { x: frame.intersection.centre.x - 90, z: frame.intersection.centre.z + halfDepth },
+    ], frame.camera, viewport, '#343b41')
+  }
+
+  for (const pair of pairs) {
+    for (const lane of pair.from.lanes) {
+      const nextLane = pair.to.lanes.find((candidate) => candidate.laneId === lane.laneId)
+      if (!nextLane) continue
+      for (const [side, marking] of [['left', lane.leftMarking], ['right', lane.rightMarking]] as const) {
+        const style = markingStyle(marking)
+        if (!style || (marking === 'dashed-white' && Math.floor((pair.from.sM + distance) / 9) % 2 !== 0)) continue
+        const sign = side === 'left' ? -1 : 1
+        worldLine(ctx,
+          { x: lane.centre.x + sign * lane.widthM / 2, z: lane.centre.z },
+          { x: nextLane.centre.x + sign * nextLane.widthM / 2, z: nextLane.centre.z },
+          frame.camera, viewport, style.colour, style.width)
+        if (marking === 'double-yellow') worldLine(ctx,
+          { x: lane.centre.x + sign * lane.widthM / 2 + 0.22, z: lane.centre.z },
+          { x: nextLane.centre.x + sign * nextLane.widthM / 2 + 0.22, z: nextLane.centre.z },
+          frame.camera, viewport, style.colour, 0.11)
+      }
+    }
+  }
+
+  for (const arrow of frame.arrows) {
+    const shaftEnd = { x: arrow.point.x, z: arrow.point.z + 5 }
+    worldLine(ctx, arrow.point, shaftEnd, frame.camera, viewport, '#ffffff', 0.32)
+    if (arrow.movement === 'straight') {
+      worldLine(ctx, shaftEnd, { x: shaftEnd.x - 1.2, z: shaftEnd.z - 1.5 }, frame.camera, viewport, '#ffffff', 0.28)
+      worldLine(ctx, shaftEnd, { x: shaftEnd.x + 1.2, z: shaftEnd.z - 1.5 }, frame.camera, viewport, '#ffffff', 0.28)
+    } else {
+      const sign = arrow.movement === 'right' ? 1 : -1
+      const tip = { x: shaftEnd.x + sign * 1.8, z: shaftEnd.z }
+      worldLine(ctx, shaftEnd, tip, frame.camera, viewport, '#ffffff', 0.32)
+      worldLine(ctx, tip, { x: tip.x - sign * 0.9, z: tip.z - 1 }, frame.camera, viewport, '#ffffff', 0.28)
+    }
+  }
+
+  if (!frame.intersection) return
+  const stopAhead = frame.intersection.stopLineZ - frame.camera.z
+  if (stopAhead >= 7 && stopAhead <= 95) {
+    const nearest = frame.slices.reduce((best, slice) => Math.abs(slice.centre.z - frame.intersection!.stopLineZ) < Math.abs(best.centre.z - frame.intersection!.stopLineZ) ? slice : best)
+    projectPolygon(ctx, [
+      { x: nearest.leftEdgeX, z: frame.intersection.stopLineZ - 0.22 },
+      { x: nearest.rightEdgeX, z: frame.intersection.stopLineZ - 0.22 },
+      { x: nearest.rightEdgeX, z: frame.intersection.stopLineZ + 0.22 },
+      { x: nearest.leftEdgeX, z: frame.intersection.stopLineZ + 0.22 },
+    ], frame.camera, viewport, '#ffffff')
+  }
+}
+
+function drawProfileTrafficLight(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewport: Viewport, colour: 'red' | 'yellow' | 'green') {
+  if (!frame.intersection || frame.intersection.control !== 'traffic-signal') return false
+  const nearest = frame.slices.reduce((best, slice) => Math.abs(slice.centre.z - frame.intersection!.centre.z) < Math.abs(best.centre.z - frame.intersection!.centre.z) ? slice : best)
+  const base = worldToScreen({ x: nearest.rightEdgeX + 2.4, z: frame.intersection.centre.z - frame.intersection.crossRoadWidthM / 2 }, frame.camera, viewport.width, viewport.height)
+  if (!base) return false
+  const poleHeight = Math.max(30, 155 * base.scale)
+  const boxWidth = Math.max(16, 45 * base.scale)
+  const boxHeight = Math.max(38, 95 * base.scale)
+  const boxX = base.x - boxWidth / 2
+  const boxY = base.y - poleHeight - boxHeight
+  ctx.fillStyle = '#333b40'
+  ctx.fillRect(base.x - Math.max(2, 4 * base.scale), boxY + boxHeight - 2, Math.max(4, 8 * base.scale), poleHeight + 2)
+  ctx.fillStyle = '#20282d'
+  ctx.beginPath()
+  ctx.roundRect(boxX, boxY, boxWidth, boxHeight, Math.max(3, 7 * base.scale))
+  ctx.fill()
+  ;(['red', 'yellow', 'green'] as const).forEach((name, index) => {
+    ctx.beginPath()
+    ctx.arc(base.x, boxY + boxHeight * (0.22 + index * 0.29), Math.max(4, boxWidth * 0.19), 0, Math.PI * 2)
+    ctx.fillStyle = name === colour ? ({ red: '#ef4e43', yellow: '#ffd041', green: '#42cc75' }[name]) : '#4b5358'
+    ctx.fill()
+  })
+  return true
+}
+
 function drawLeadVehicle(ctx: CanvasRenderingContext2D, camera: CameraPose, viewport: Viewport) {
   const ground = worldToScreen({ x: camera.x, z: camera.z + 48 }, camera, viewport.width, viewport.height)
   if (!ground) return
@@ -279,7 +385,7 @@ function drawCockpit(ctx: CanvasRenderingContext2D, viewport: Viewport, steering
   }
 }
 
-function drawScene(canvas: HTMLCanvasElement, props: Props, camera: CameraPose, steeringAngle: number, viewport: Viewport, pixelRatio: number) {
+function drawScene(canvas: HTMLCanvasElement, props: Props, camera: CameraPose, steeringAngle: number, viewport: Viewport, pixelRatio: number, roadFrame?: RoadFrame) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return false
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
@@ -304,23 +410,32 @@ function drawScene(canvas: HTMLCanvasElement, props: Props, camera: CameraPose, 
     ctx.arc(viewport.width * 0.75, viewport.height * 0.37, 45 * unit, 0, Math.PI * 2)
     ctx.fill()
   }
-  drawRoad(ctx, camera, viewport, hasIntersection, props.scenarioDistanceMeters)
+  if (roadFrame) drawProfileRoad(ctx, roadFrame, viewport, props.scenarioDistanceMeters)
+  else drawRoad(ctx, camera, viewport, hasIntersection, props.scenarioDistanceMeters)
   if (props.scenario.type === 'slow-lead' || props.scenario.type === 'freeway-merge') drawLeadVehicle(ctx, camera, viewport)
-  const trafficLightVisible = props.scenario.trafficLight ? drawTrafficLight(ctx, camera, viewport, props.scenario.trafficLight) : false
+  const signalColour = props.scenario.trafficLight ?? (roadFrame?.intersection?.control === 'traffic-signal' ? 'red' : undefined)
+  const trafficLightVisible = signalColour
+    ? roadFrame ? drawProfileTrafficLight(ctx, roadFrame, viewport, signalColour) : drawTrafficLight(ctx, camera, viewport, signalColour)
+    : false
   drawCockpit(ctx, viewport, steeringAngle, props.signal)
   return trafficLightVisible
 }
 
 export function CanvasRoadScene(props: Props) {
-  const { scenario, speedKph, lane, lanePosition, laneChangeDirection, laneChangeProgress, signal, recentAction, scenarioDistanceMeters, turnDirection, turnProgress, turnStartDistanceMeters, reducedMotion } = props
+  const { scenario, speedKph, lane, lanePosition, laneChangeDirection, laneChangeProgress, signal, recentAction, scenarioDistanceMeters, turnDirection, turnProgress, turnStartDistanceMeters, reducedMotion, roadProfileEnabled, roadPosition, laneOffsetM } = props
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const hasIntersection = INTERSECTION_TYPES.has(scenario.type)
-  const phase = hasIntersection ? intersectionPhase(scenarioDistanceMeters) : null
-  const camera = vehiclePose(scenarioDistanceMeters, reducedMotion ? lane : lanePosition, turnDirection, turnProgress, turnStartDistanceMeters)
-  const laneSteeringAngle = reducedMotion || laneChangeDirection === 0 ? 0 : laneChangeDirection * 7 * Math.sin(laneChangeProgress * Math.PI * 2)
+  const roadFrame = roadProfileEnabled ? buildRoadFrame({ position: roadPosition, laneOffsetM: reducedMotion ? getRoadFacts(roadPosition).laneOffsetM : laneOffsetM, turnDirection, turnProgress }) : undefined
+  const hasIntersection = roadFrame ? Boolean(roadFrame.intersection) : INTERSECTION_TYPES.has(scenario.type)
+  const intersectionDistance = roadFrame?.intersection ? roadFrame.intersection.centre.z - roadFrame.camera.z : undefined
+  const phase = roadFrame
+    ? intersectionDistance === undefined ? null : intersectionDistance > 115 ? 'ahead' : intersectionDistance > 35 ? 'approaching' : intersectionDistance > 7 ? 'decision' : intersectionDistance > -18 ? 'crossing' : 'passed'
+    : hasIntersection ? intersectionPhase(scenarioDistanceMeters) : null
+  const camera = roadFrame?.camera ?? vehiclePose(scenarioDistanceMeters, reducedMotion ? lane : lanePosition, turnDirection, turnProgress, turnStartDistanceMeters)
+  const laneSteeringAngle = reducedMotion || laneChangeDirection === 0 ? 0 : laneChangeDirection * 7 * Math.sin(laneChangeProgress * Math.PI)
   const turnSign = turnDirection === 'right' ? 1 : turnDirection === 'left' ? -1 : 0
   const steeringAngle = turnDirection ? turnSign * 25 * Math.sin(turnProgress * Math.PI) : laneSteeringAngle
-  const laneName = lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre'
+  const roadFacts = roadProfileEnabled ? getRoadFacts(roadPosition) : undefined
+  const laneName = roadFacts?.laneRole.replace('-', ' ') ?? (lane === -1 ? 'Left' : lane === 1 ? 'Right' : 'Centre')
   const stageLabel = turnDirection
     ? `Turning ${turnDirection}`
     : phase === 'ahead' ? 'Intersection ahead'
@@ -328,7 +443,7 @@ export function CanvasRoadScene(props: Props) {
         : phase === 'decision' ? 'Decision zone'
           : phase === 'crossing' ? 'Crossing intersection'
             : 'Intersection passed'
-  const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${hasIntersection ? `${stageLabel}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
+  const label = `First-person ${scenario.environment} road scene for ${scenario.title}. ${roadFrame?.roadSummary ?? ''} ${hasIntersection ? `${stageLabel}. ` : ''}Current speed ${Math.round(speedKph)} kilometres per hour.`
   const feedbackLabel = recentAction === 'signal-left' ? `Left signal ${signal === 'left' ? 'on' : 'off'}`
     : recentAction === 'signal-right' ? `Right signal ${signal === 'right' ? 'on' : 'off'}`
       : recentAction === 'lane-left' ? `Changing one lane left — target ${laneName} lane`
@@ -348,22 +463,26 @@ export function CanvasRoadScene(props: Props) {
       const targetHeight = Math.round(viewport.height * pixelRatio)
       if (canvas.width !== targetWidth) canvas.width = targetWidth
       if (canvas.height !== targetHeight) canvas.height = targetHeight
-      const visible = drawScene(canvas, props, camera, steeringAngle, viewport, pixelRatio)
+      const visible = drawScene(canvas, props, camera, steeringAngle, viewport, pixelRatio, roadFrame)
       canvas.dataset.trafficLightVisible = String(visible)
     }
     render()
     const observer = new ResizeObserver(render)
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [camera, props, steeringAngle])
+  }, [camera, props, roadFrame, steeringAngle])
+
+  const dynamicLanes = roadFacts ? activeForwardLanes(roadFacts.section, roadPosition.sMeters) : []
 
   return (
-    <div className="road-frame" data-testid="road-world" data-camera-x={camera.x.toFixed(2)} data-camera-z={camera.z.toFixed(2)} data-camera-heading={camera.heading.toFixed(3)} data-intersection-phase={phase ?? 'none'}>
-      <canvas ref={canvasRef} className="road-scene" width="1920" height="1080" role="img" aria-label={label} data-testid="driving-canvas" data-lane-position={(reducedMotion ? lane : lanePosition).toFixed(2)} data-steering-angle={steeringAngle.toFixed(1)} />
+    <div className="road-frame" data-testid="road-world" data-camera-x={camera.x.toFixed(2)} data-camera-z={camera.z.toFixed(2)} data-camera-heading={camera.heading.toFixed(3)} data-intersection-phase={phase ?? 'none'} data-road-section={roadPosition.sectionId} data-lane-id={roadPosition.laneId}>
+      <canvas ref={canvasRef} className="road-scene" width="1920" height="1080" role="img" aria-label={label} data-testid="driving-canvas" data-lane-position={(reducedMotion ? lane : lanePosition).toFixed(2)} data-lane-offset={(roadProfileEnabled ? laneOffsetM : lanePosition * 3.6).toFixed(2)} data-steering-angle={steeringAngle.toFixed(1)} />
       <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>LEFT MIRROR</b><span /></div>
       <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>RIGHT MIRROR</b><span /></div>
       <div className="lane-indicator" aria-label="Current lane" aria-live="polite">
-        {(['Left', 'Centre', 'Right'] as const).map((name, index) => <span key={name} className={lane === index - 1 ? 'current' : ''}><i aria-hidden="true">▲</i>{name}</span>)}
+        {roadProfileEnabled
+          ? dynamicLanes.map((item) => <span key={item.id} className={item.id === roadPosition.laneId ? 'current' : ''}><i aria-hidden="true">▲</i>{item.role.replace('-', ' ')}</span>)
+          : (['Left', 'Centre', 'Right'] as const).map((name, index) => <span key={name} className={lane === index - 1 ? 'current' : ''}><i aria-hidden="true">▲</i>{name}</span>)}
       </div>
       {hasIntersection && phase !== 'passed' && <div className={`scene-event ${phase === 'decision' || phase === 'crossing' ? 'decision' : ''}`} aria-live="polite"><strong>{stageLabel}</strong><span>{turnDirection ? 'Follow the road into the new street' : phase === 'crossing' ? 'Intersection is passing under the car' : phase === 'decision' ? 'Correct lane · slow down · turn' : 'Watch the signal and road markings'}</span></div>}
       {recentAction && feedbackLabel && <div className={`action-feedback feedback-${recentAction}`} role="status"><span>{recentAction.includes('left') ? '←' : '→'}</span>{feedbackLabel}</div>}

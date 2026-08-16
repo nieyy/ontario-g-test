@@ -11,6 +11,9 @@ import type {
   ScenarioType,
 } from '../content/types'
 import { createRunConfig, resolveRunConfig, type EngineState } from '../domain/engine'
+import { newmarketRoadProfile } from '../content/roadProfiles/newmarket'
+import { NEWMARKET_ROAD_PROFILE_ENABLED } from '../config/featureFlags'
+import { activeForwardLanes, advanceRoadPosition, createRoadPosition, getRoadFacts, getSection } from '../domain/roadModel'
 
 const PREFERENCES_KEY = 'ontario-g-test.preferences.v1'
 const FALLBACK_ATTEMPTS_KEY = 'ontario-g-test:attempts:v1'
@@ -49,6 +52,18 @@ export type AttemptCheckpointV2 = AttemptCheckpoint<PersistedEngineStateV2> & {
   status: AttemptStatus
   coach?: CoachState
   guidancePlanVersion?: number
+}
+
+export type AttemptCheckpointV3 = AttemptCheckpoint<PersistedEngineStateV2> & {
+  schemaVersion: 3
+  config: ResolvedRunConfig
+  runtime: AttemptRuntimeContext
+  status: AttemptStatus
+  coach?: CoachState
+  guidancePlanVersion?: number
+  roadProfileId: string
+  roadProfileVersion: string
+  routeSeed: number
 }
 
 export const defaultPreferences: Preferences = {
@@ -159,10 +174,40 @@ export function normalizeAttemptRecord(stored: AttemptRecord | AttemptRecordV2):
   }
 }
 
-export function normalizeEngineCheckpoint(stored: AttemptCheckpoint<EngineState> | AttemptCheckpointV2): AttemptCheckpointV2 | undefined {
+function migrateLegacyRoadState(state: PersistedEngineStateV2): PersistedEngineStateV2 | undefined {
+  if (state.roadPosition && state.laneOffsetM !== undefined) return { ...state, roadProfileEnabled: NEWMARKET_ROAD_PROFILE_ENABLED }
+  const scenario = state.route[Math.min(state.scenarioIndex ?? 0, state.route.length - 1)]
+  if (!scenario?.routeBinding) return undefined
+  const initial = createRoadPosition(scenario.routeBinding, scenario.type)
+  const roadPosition = advanceRoadPosition(initial, Math.max(0, state.scenarioDistanceMeters ?? 0), scenario.routeBinding)
+  const lanes = activeForwardLanes(getSection(newmarketRoadProfile, roadPosition.sectionId), roadPosition.sMeters)
+  const targetIndex = lanes.length === 1 && state.lane === 0
+    ? 0
+    : lanes.length === 3
+      ? state.lane + 1
+      : lanes.length === 2 && state.lane !== 0
+        ? state.lane === -1 ? 0 : 1
+        : -1
+  const target = lanes[targetIndex]
+  if (!target) return undefined
+  const migratedPosition = { ...roadPosition, laneId: target.id }
+  return {
+    ...state,
+    roadProfileEnabled: NEWMARKET_ROAD_PROFILE_ENABLED,
+    roadPosition: migratedPosition,
+    laneOffsetM: getRoadFacts(migratedPosition).laneOffsetM,
+    laneChangeFromOffsetM: null,
+  }
+}
+
+export function normalizeEngineCheckpoint(stored: AttemptCheckpoint<EngineState> | AttemptCheckpointV2 | AttemptCheckpointV3): AttemptCheckpointV3 | undefined {
   const state = stored.state
   if (!state?.route?.length) return undefined
-  if ('schemaVersion' in stored && stored.schemaVersion === 2) return stored
+  if ('schemaVersion' in stored && stored.schemaVersion === 3) {
+    const migratedState = migrateLegacyRoadState(state)
+    if (!migratedState || stored.roadProfileId !== newmarketRoadProfile.id || stored.roadProfileVersion !== newmarketRoadProfile.version) return undefined
+    return { ...stored, state: migratedState }
+  }
   const stage = state.stage ?? 'exam'
   const only = state.route.length === 1 ? state.route[0] : undefined
   const config = resolveRunConfig(createRunConfig({
@@ -173,18 +218,30 @@ export function normalizeEngineCheckpoint(stored: AttemptCheckpoint<EngineState>
       ? { kind: 'scenario', scenarioType: only.type, variantId: only.id, practiceSessionId: `legacy-${stored.attemptId}`, roundIndex: 1 }
       : { kind: 'full-route' },
   }))
+  const migratedState = migrateLegacyRoadState({ ...state, stage })
+  if (!migratedState) return undefined
+  const normalizedV2: AttemptCheckpointV2 = 'schemaVersion' in stored && stored.schemaVersion === 2
+    ? stored
+    : {
+      ...stored,
+      schemaVersion: 2,
+      state: { ...state, stage },
+      config,
+      runtime: {
+        originMode: config.mode,
+        guidanceMode: config.mode === 'practice' ? 'guided' : stage === 'continued-practice' ? 'guided' : 'off',
+        findingContext: stage === 'exam' ? 'exam' : 'practice',
+        continuedAfterDangerAtSeconds: stage === 'continued-practice' ? state.elapsed : undefined,
+      },
+      status: state.dangerPending ? 'danger-review' : state.paused ? 'paused' : state.completed ? 'completed' : 'running',
+    }
   return {
-    ...stored,
-    schemaVersion: 2,
-    state: { ...state, stage },
-    config,
-    runtime: {
-      originMode: config.mode,
-      guidanceMode: config.mode === 'practice' ? 'guided' : stage === 'continued-practice' ? 'guided' : 'off',
-      findingContext: stage === 'exam' ? 'exam' : 'practice',
-      continuedAfterDangerAtSeconds: stage === 'continued-practice' ? state.elapsed : undefined,
-    },
-    status: state.dangerPending ? 'danger-review' : state.paused ? 'paused' : state.completed ? 'completed' : 'running',
+    ...normalizedV2,
+    state: migratedState,
+    schemaVersion: 3,
+    roadProfileId: newmarketRoadProfile.id,
+    roadProfileVersion: newmarketRoadProfile.version,
+    routeSeed: state.seed,
   }
 }
 

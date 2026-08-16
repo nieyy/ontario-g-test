@@ -1,4 +1,7 @@
 import { newmarketCentre, scenarioOrder } from '../content/data'
+import { newmarketRoadProfile } from '../content/roadProfiles/newmarket'
+import type { RoadPosition } from '../content/roadProfiles/types'
+import { NEWMARKET_ROAD_PROFILE_ENABLED } from '../config/featureFlags'
 import type {
   ActionType,
   AttemptRecordV2,
@@ -13,6 +16,13 @@ import type {
   ScenarioType,
   ScenarioVariant,
 } from '../content/types'
+import {
+  advanceRoadPosition,
+  canTurnFromRoad,
+  createRoadPosition,
+  getRoadFacts,
+  requestAdjacentLane,
+} from './roadModel'
 
 export const TICK_SECONDS = 0.1
 export const INTERSECTION_DECISION_DISTANCE_METERS = 180
@@ -34,6 +44,10 @@ export type EngineState = {
   lanePosition: number
   laneChangeFrom: number | null
   laneChangeElapsed: number
+  roadProfileEnabled: boolean
+  roadPosition: RoadPosition
+  laneOffsetM: number
+  laneChangeFromOffsetM: number | null
   signal: 'left' | 'right' | null
   turnDirection: 'left' | 'right' | null
   turnProgress: number
@@ -104,9 +118,12 @@ export function createEngine(configOrSeed: ResolvedRunConfig | number, legacySta
     : configOrSeed
   const scenarioScope = config.mode === 'practice' && config.scope.kind === 'scenario' ? config.scope : undefined
   const stage: RunStage = config.mode === 'exam' ? 'exam' : legacyStage === 'continued-practice' ? 'continued-practice' : 'practice'
+  const route = buildRoute(config.seed, scenarioScope?.scenarioType, scenarioScope?.variantId)
+  const roadPosition = createRoadPosition(route[0].routeBinding, route[0].type)
+  const laneOffsetM = getRoadFacts(roadPosition).laneOffsetM
   return {
     seed: config.seed,
-    route: buildRoute(config.seed, scenarioScope?.scenarioType, scenarioScope?.variantId),
+    route,
     scenarioIndex: 0,
     scenarioElapsed: 0,
     scenarioDistanceMeters: 0,
@@ -116,6 +133,10 @@ export function createEngine(configOrSeed: ResolvedRunConfig | number, legacySta
     lanePosition: 0,
     laneChangeFrom: null,
     laneChangeElapsed: 0,
+    roadProfileEnabled: NEWMARKET_ROAD_PROFILE_ENABLED,
+    roadPosition,
+    laneOffsetM,
+    laneChangeFromOffsetM: null,
     signal: null,
     turnDirection: null,
     turnProgress: 0,
@@ -138,9 +159,9 @@ export function canStartTurn(state: EngineState, type: 'turn-left' | 'turn-right
   if (
     state.turnDirection
     || state.laneChangeFrom !== null
-    || state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS
-    || state.scenarioDistanceMeters > INTERSECTION_TURN_EXIT_DISTANCE_METERS
   ) return false
+  if (state.roadProfileEnabled) return canTurnFromRoad(state.roadPosition, type === 'turn-left' ? 'left' : 'right')
+  if (state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS || state.scenarioDistanceMeters > INTERSECTION_TURN_EXIT_DISTANCE_METERS) return false
   const scenario = currentScenario(state)
   if (type === 'turn-right') return scenario.type === 'right-on-red' && state.lane === 1
   return scenario.type === 'multilane-left' && state.lane === -1
@@ -154,18 +175,31 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   let lane = state.lane
   let laneChangeFrom = state.laneChangeFrom
   let laneChangeElapsed = state.laneChangeElapsed
+  let roadPosition = state.roadPosition
+  const laneOffsetM = state.laneOffsetM
+  let laneChangeFromOffsetM = state.laneChangeFromOffsetM
   let signal = state.signal
   let speedKph = state.speedKph
   let turnDirection = state.turnDirection
   let turnStartDistanceMeters = state.turnStartDistanceMeters
 
-  if (type === 'lane-left') lane = Math.max(-1, lane - 1) as -1 | 0 | 1
-  if (type === 'lane-right') lane = Math.min(1, lane + 1) as -1 | 0 | 1
-  if (type.startsWith('lane-') && lane === state.lane) return state
-  if (lane !== state.lane) {
+  if (state.roadProfileEnabled && (type === 'lane-left' || type === 'lane-right')) {
+    const result = requestAdjacentLane(state.roadPosition, type === 'lane-left' ? 'left' : 'right')
+    if (!result.accepted) return state
+    roadPosition = result.position
+    lane = Math.max(-1, Math.min(1, lane + (type === 'lane-left' ? -1 : 1))) as -1 | 0 | 1
+    laneChangeFromOffsetM = state.laneOffsetM
+  } else {
+    if (type === 'lane-left') lane = Math.max(-1, lane - 1) as -1 | 0 | 1
+    if (type === 'lane-right') lane = Math.min(1, lane + 1) as -1 | 0 | 1
+  }
+  const roadLaneChanged = roadPosition.laneId !== state.roadPosition.laneId
+  if (type.startsWith('lane-') && lane === state.lane && !roadLaneChanged) return state
+  if (lane !== state.lane || roadLaneChanged) {
     laneChangeFrom = state.lanePosition
     laneChangeElapsed = 0
   }
+  if (roadPosition !== state.roadPosition && laneChangeFromOffsetM === null) laneChangeFromOffsetM = laneOffsetM
   if (type === 'signal-left') signal = signal === 'left' ? null : 'left'
   if (type === 'signal-right') signal = signal === 'right' ? null : 'right'
   if (type === 'accelerate') speedKph = Math.min(120, speedKph + TAP_ACCELERATION_KPH)
@@ -186,6 +220,9 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
     lane,
     laneChangeFrom,
     laneChangeElapsed,
+    roadPosition,
+    laneOffsetM,
+    laneChangeFromOffsetM,
     signal,
     speedKph,
     turnDirection,
@@ -283,11 +320,15 @@ function completeScenario(state: EngineState): EngineState {
   const findings = evaluateScenario(state)
   const dangerPending = findings.some((finding) => finding.severity === 'dangerous')
   const isFinal = state.scenarioIndex >= state.route.length - 1
+  const nextScenarioIndex = isFinal ? state.scenarioIndex : state.scenarioIndex + 1
+  const nextScenario = state.route[nextScenarioIndex]
+  const roadPosition = isFinal ? state.roadPosition : createRoadPosition(nextScenario.routeBinding, nextScenario.type)
+  const laneOffsetM = getRoadFacts(roadPosition).laneOffsetM
 
   return {
     ...state,
     findings: [...state.findings, ...findings],
-    scenarioIndex: isFinal ? state.scenarioIndex : state.scenarioIndex + 1,
+    scenarioIndex: nextScenarioIndex,
     scenarioElapsed: 0,
     scenarioDistanceMeters: 0,
     scenarioActions: [],
@@ -295,6 +336,9 @@ function completeScenario(state: EngineState): EngineState {
     lanePosition: 0,
     laneChangeFrom: null,
     laneChangeElapsed: 0,
+    roadPosition,
+    laneOffsetM,
+    laneChangeFromOffsetM: null,
     signal: null,
     turnDirection: null,
     turnProgress: 0,
@@ -321,6 +365,10 @@ export function advanceEngine(
   const nextElapsed = state.scenarioElapsed + seconds
   const currentDistance = state.scenarioDistanceMeters ?? 0
   const nextDistance = currentDistance + ((state.speedKph + nextSpeed) / 2 / 3.6) * seconds
+  const deltaDistance = nextDistance - currentDistance
+  const nextRoadPosition = state.roadProfileEnabled
+    ? advanceRoadPosition(state.roadPosition, deltaDistance, scenario.routeBinding)
+    : state.roadPosition
   const nextTurnProgress = state.turnDirection
     ? Math.min(1, state.turnProgress + seconds / TURN_DURATION_SECONDS)
     : 0
@@ -335,6 +383,10 @@ export function advanceEngine(
     ? state.lanePosition
     : state.laneChangeFrom + (state.lane - state.laneChangeFrom) * easedLaneProgress
   const laneChangeComplete = state.laneChangeFrom !== null && laneChangeProgress >= 1
+  const targetRoadOffset = state.roadProfileEnabled ? getRoadFacts(nextRoadPosition, newmarketRoadProfile).laneOffsetM : state.laneOffsetM
+  const nextLaneOffsetM = state.laneChangeFromOffsetM === null
+    ? targetRoadOffset
+    : state.laneChangeFromOffsetM + (targetRoadOffset - state.laneChangeFromOffsetM) * easedLaneProgress
   const updated: EngineState = {
     ...state,
     speedKph: nextSpeed,
@@ -345,6 +397,9 @@ export function advanceEngine(
     lanePosition: laneChangeComplete ? state.lane : nextLanePosition,
     laneChangeFrom: laneChangeComplete ? null : state.laneChangeFrom,
     laneChangeElapsed: laneChangeComplete ? 0 : nextLaneChangeElapsed,
+    roadPosition: nextRoadPosition,
+    laneOffsetM: laneChangeComplete ? targetRoadOffset : nextLaneOffsetM,
+    laneChangeFromOffsetM: laneChangeComplete ? null : state.laneChangeFromOffsetM,
   }
 
   if (state.turnDirection && nextTurnProgress >= 1) return completeScenario(updated)
@@ -435,6 +490,9 @@ export function toAttemptRecord(
     completed: state.completed,
     guidanceSummary,
     migrationSource: 'v2',
+    roadProfileId: state.roadProfileEnabled ? newmarketRoadProfile.id : undefined,
+    routeId: state.roadProfileEnabled ? state.roadPosition.routeId : undefined,
+    sectionIds: state.roadProfileEnabled ? [...new Set(state.route.flatMap((scenario) => scenario.routeBinding.edgeIds.map((edgeId) => getRoadFacts(createRoadPosition({ routeId: scenario.routeBinding.routeId, edgeIds: [edgeId] }, scenario.type)).section.id)))] : undefined,
   }
 }
 

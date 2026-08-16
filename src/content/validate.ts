@@ -30,6 +30,7 @@ export function validateCentreContent(centre: CentreProfile): string[] {
       if (variant.durationSeconds <= 0) errors.push(`${variant.id} has an invalid duration`)
       if (!variant.examinerInstruction.trim()) errors.push(`${variant.id} is missing examiner wording`)
       if (!variant.evidence?.level) errors.push(`${variant.id} is missing evidence metadata`)
+      if (!variant.routeBinding?.routeId || !variant.routeBinding.edgeIds.length) errors.push(`${variant.id} is missing a road-profile route binding`)
     }
   }
 

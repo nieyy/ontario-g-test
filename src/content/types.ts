@@ -34,6 +34,7 @@ export type ScenarioVariant = {
   requiredActions: ActionType[]
   dangerousWhenMissing: ActionType[]
   evidence: Evidence
+  routeBinding: import('./roadProfiles/types').RouteBinding
 }
 
 export type CentreProfile = {
@@ -192,6 +193,9 @@ export type AttemptRecordV2 = Omit<AttemptRecord, 'findings'> & {
     missedStepIds: string[]
   }>
   migrationSource?: 'v1' | 'v2'
+  roadProfileId?: string
+  routeId?: string
+  sectionIds?: string[]
 }
 
 export type GuidanceStepPhase = 'prepare' | 'act' | 'confirm'
@@ -201,6 +205,10 @@ export type GuidanceCondition =
   | { kind: 'distance-at-least'; metres: number }
   | { kind: 'distance-at-most'; metres: number }
   | { kind: 'lane-is'; lane: -1 | 0 | 1 }
+  | { kind: 'lane-role-is'; role: import('./roadProfiles/types').LaneRole }
+  | { kind: 'lane-transition-available'; direction: 'left' | 'right' }
+  | { kind: 'intersection-distance-band'; minMetres: number; maxMetres: number }
+  | { kind: 'road-section-kind'; template: import('./roadProfiles/types').RoadSectionTemplate }
   | { kind: 'speed-at-most'; kph: number }
   | { kind: 'speed-at-least'; kph: number }
   | { kind: 'action-observed'; action: ActionType }

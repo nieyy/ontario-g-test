@@ -3,6 +3,7 @@ import {
   advanceEngine,
   buildRoute,
   createEngine,
+  LANE_CHANGE_DURATION_SECONDS,
   recordAction,
   resolveDanger,
   TICK_SECONDS,
@@ -84,7 +85,7 @@ describe('deterministic engine', () => {
   })
 
   it('keeps lane changes separate from an explicit intersection turn', () => {
-    let state = createEngine(14, 'practice', 'right-on-red')
+    let state = { ...createEngine(14, 'practice', 'right-on-red'), roadProfileEnabled: false }
     state = recordAction(state, 'lane-right')
     state = advanceEngine(state, 0.9)
     state = { ...state, scenarioDistanceMeters: 180 }
@@ -115,7 +116,7 @@ describe('deterministic engine', () => {
   })
 
   it('does not allow an intersection turn after the vehicle has passed it', () => {
-    let state = createEngine(22, 'practice', 'right-on-red')
+    let state = { ...createEngine(22, 'practice', 'right-on-red'), roadProfileEnabled: false }
     state = recordAction(state, 'lane-right')
     state = advanceEngine(state, 0.9)
     state = { ...state, scenarioDistanceMeters: 246 }
@@ -123,7 +124,7 @@ describe('deterministic engine', () => {
   })
 
   it('moves through a timed lane transition and rejects stacked steering', () => {
-    let state = createEngine(21, 'practice')
+    let state = { ...createEngine(21, 'practice'), roadProfileEnabled: false }
     state = recordAction(state, 'lane-right')
     expect(state.lane).toBe(1)
     expect(state.lanePosition).toBe(0)
@@ -142,7 +143,7 @@ describe('deterministic engine', () => {
   })
 
   it('centres the vehicle when a new authored road scene begins', () => {
-    let state = createEngine(19, 'practice')
+    let state = { ...createEngine(19, 'practice'), roadProfileEnabled: false }
     state = recordAction(state, 'lane-left')
     expect(state.lane).toBe(-1)
 
@@ -152,5 +153,17 @@ describe('deterministic engine', () => {
     expect(state.lane).toBe(0)
     expect(state.lanePosition).toBe(0)
     expect(state.laneChangeFrom).toBe(null)
+  })
+
+  it('keeps RoadPosition, lane animation and steering direction aligned when the profile is enabled', () => {
+    let state = createEngine(31, 'practice', 'multilane-left')
+    state = { ...state, roadProfileEnabled: true, roadPosition: { ...state.roadPosition, sMeters: 160 } }
+    state = recordAction(state, 'lane-left')
+    expect(state.roadPosition.laneId).toBe('pocket-left-turn')
+    expect(state.laneChangeFromOffsetM).not.toBeNull()
+    state = advanceEngine(state, LANE_CHANGE_DURATION_SECONDS)
+    expect(state.laneChangeFromOffsetM).toBeNull()
+    expect(state.laneOffsetM).toBeLessThan(1.8)
+    expect(state.laneChangeFrom).toBeNull()
   })
 })

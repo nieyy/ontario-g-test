@@ -1,6 +1,17 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 
+async function openFocusedPractice(page: import('@playwright/test').Page, title: string, query = '') {
+  await page.goto(query)
+  await page.getByRole('button', { name: 'Choose a test centre' }).click()
+  await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Guided Practice' }).click()
+  const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name: title }) })
+  await card.getByRole('button', { name: 'Practice this scene' }).click()
+  await page.getByRole('button', { name: 'Start when ready' }).click()
+  await expect(page.getByText('GUIDED PRACTICE', { exact: true })).toBeVisible()
+}
+
 test('completes an accelerated Newmarket drive and produces a review', async ({ page }) => {
   await page.goto('?debug=1&seed=17')
   await expect(page.getByRole('heading', { name: /Make the G-test routine visible/i })).toBeVisible()
@@ -94,23 +105,18 @@ test('distinguishes pedal taps from sustained acceleration and braking', async (
 })
 
 test('approaches the instructed intersection only while the vehicle moves', async ({ page }) => {
-  await page.goto('?seed=43')
-  await page.getByRole('button', { name: 'Choose a test centre' }).click()
-  await page.getByRole('button', { name: 'Select Newmarket' }).click()
-  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
-  await page.getByRole('button', { name: 'Start when ready' }).click()
+  await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=760&seed=43')
 
   const roadWorld = page.getByTestId('road-world')
   await expect(roadWorld).toBeVisible()
+  await expect(roadWorld).toHaveAttribute('data-road-section', 'urban-signal-junction')
   const initialDistance = Number(await roadWorld.getAttribute('data-camera-z'))
   await page.waitForTimeout(600)
   const stoppedDistance = Number(await roadWorld.getAttribute('data-camera-z'))
   expect(stoppedDistance).toBe(initialDistance)
 
-  await page.keyboard.down('ArrowUp')
-  await page.waitForTimeout(1000)
-  await page.keyboard.up('ArrowUp')
-  await page.waitForTimeout(400)
+  await page.keyboard.press('ArrowUp')
+  await page.waitForTimeout(700)
   const laterDistance = Number(await roadWorld.getAttribute('data-camera-z'))
 
   expect(laterDistance).toBeGreaterThan(stoppedDistance)
@@ -119,11 +125,7 @@ test('approaches the instructed intersection only while the vehicle moves', asyn
 })
 
 test('drives across the intersection and leaves it behind', async ({ page }) => {
-  await page.goto('?debug=1&timeScale=2&startDistance=228&seed=45')
-  await page.getByRole('button', { name: 'Choose a test centre' }).click()
-  await page.getByRole('button', { name: 'Select Newmarket' }).click()
-  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
-  await page.getByRole('button', { name: 'Start when ready' }).click()
+  await openFocusedPractice(page, 'Yellow-light decision', '?debug=1&timeScale=2&startDistance=248&seed=45')
 
   const roadWorld = page.getByTestId('road-world')
   await expect(roadWorld).toHaveAttribute('data-intersection-phase', 'crossing')
@@ -135,34 +137,24 @@ test('drives across the intersection and leaves it behind', async ({ page }) => 
   await expect(page.getByText('Intersection is passing under the car')).toBeHidden()
 })
 
-test('uses left and right steering keys for lane changes and edge turns', async ({ page }) => {
-  await page.goto('?debug=1&timeScale=1&startDistance=200&seed=47')
-  await page.getByRole('button', { name: 'Choose a test centre' }).click()
-  await page.getByRole('button', { name: 'Select Newmarket' }).click()
-  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
-  await page.getByRole('button', { name: 'Start when ready' }).click()
+test('moves into a real left-turn pocket and turns with the same steering keys', async ({ page }) => {
+  await openFocusedPractice(page, 'Multi-lane left turn', '?debug=1&timeScale=1&startDistance=320&seed=47')
+  const roadWorld = page.getByTestId('road-world')
+  const canvas = page.getByTestId('driving-canvas')
 
-  await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('status')).toHaveText(/Changing one lane right.*Right lane/)
-  await expect(page.getByLabel('Current lane')).toHaveText(/Right/)
-  await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-position'))).toBe(1)
-  await expect(page.getByTestId('road-world')).toHaveAttribute('data-camera-x', '3.60')
-  await expect(page.getByRole('button', { name: 'Turn right at the intersection' })).toBeVisible({ timeout: 8_000 })
+  await expect(roadWorld).toHaveAttribute('data-road-section', 'left-turn-pocket')
+  await expect(roadWorld).toHaveAttribute('data-lane-id', 'pocket-through')
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByRole('status')).toHaveText(/Changing one lane left/)
+  await expect.poll(async () => roadWorld.getAttribute('data-lane-id')).toBe('pocket-left-turn')
+  await expect.poll(async () => Number(await canvas.getAttribute('data-lane-offset'))).toBeLessThan(-0.5)
+  await expect(canvas).toHaveAttribute('data-steering-angle', '0.0')
 
-  await page.waitForTimeout(200)
-  await page.keyboard.press('a')
-  await expect(page.getByRole('status')).toHaveText(/Changing one lane left.*Centre lane/)
-  await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-position'))).toBe(0)
-  await page.waitForTimeout(200)
-  await page.keyboard.press('d')
-  await expect(page.getByRole('status')).toHaveText(/Changing one lane right.*Right lane/)
-  await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-position'))).toBe(1)
-
-  await page.waitForTimeout(200)
-  await page.keyboard.press('ArrowRight')
-  await expect(page.getByText('Turning right through the intersection')).toBeVisible()
-  await expect.poll(async () => Number(await page.getByTestId('road-world').getAttribute('data-camera-heading'))).toBeGreaterThan(0)
-  await expect(page.getByText('Scene 2/6')).toBeVisible({ timeout: 2_000 })
+  await expect(page.getByRole('button', { name: 'Turn left at the intersection' })).toBeVisible({ timeout: 8_000 })
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByText('Turning left through the intersection')).toBeVisible()
+  await page.keyboard.press('ArrowUp')
+  await expect.poll(async () => Number(await roadWorld.getAttribute('data-camera-heading'))).toBeLessThan(0)
 })
 
 test('home and centre pages have no serious automated accessibility violations', async ({ page }) => {
@@ -179,11 +171,7 @@ test.describe('mobile controls', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true })
 
   test('starts and exposes touch-sized drive controls', async ({ page }) => {
-    await page.goto('?seed=3')
-    await page.getByRole('button', { name: 'Choose a test centre' }).click()
-    await page.getByRole('button', { name: 'Select Newmarket' }).click()
-    await page.getByRole('button', { name: 'Choose Exam mode' }).click()
-    await page.getByRole('button', { name: 'Start when ready' }).click()
+    await openFocusedPractice(page, 'Yellow-light decision', '?debug=1&timeScale=1&startDistance=80&seed=3')
     await expect(page.getByRole('button', { name: /Accelerate/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /Brake/ })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Left mirror' }).getByText('Q', { exact: true })).toBeVisible()
@@ -193,16 +181,14 @@ test.describe('mobile controls', () => {
     await expect(page.getByRole('button', { name: 'Right signal' })).toHaveAttribute('aria-pressed', 'true')
     await page.getByRole('button', { name: 'Right shoulder check' }).click()
     await expect(page.getByRole('status')).toHaveText(/Right shoulder checked/)
-    await page.getByRole('button', { name: 'Move one lane right to Right lane' }).click()
-    await expect(page.getByRole('status')).toHaveText(/Changing one lane right.*Right lane/)
-    await expect(page.getByLabel('Current lane')).toHaveText(/Right/)
-    await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-position'))).toBeGreaterThan(0)
-    await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-position'))).toBe(1)
+    await page.getByRole('button', { name: /Move one lane right/ }).click()
+    await expect(page.getByRole('status')).toHaveText(/Changing one lane right/)
+    await expect.poll(async () => page.getByTestId('road-world').getAttribute('data-lane-id')).toBe('signal-right-turn')
+    await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-offset'))).toBeGreaterThan(0)
     await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-steering-angle', '0.0')
-    await page.getByRole('button', { name: 'Move one lane left to Centre lane' }).click()
-    await expect(page.getByRole('status')).toHaveText(/Changing one lane left.*Centre lane/)
-    await expect(page.getByLabel('Current lane')).toHaveText(/Centre/)
-    await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-position'))).toBe(0)
+    await page.getByRole('button', { name: /Move one lane left/ }).click()
+    await expect(page.getByRole('status')).toHaveText(/Changing one lane left/)
+    await expect.poll(async () => page.getByTestId('road-world').getAttribute('data-lane-id')).toBe('signal-through')
     await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-steering-angle', '0.0')
   })
 })
