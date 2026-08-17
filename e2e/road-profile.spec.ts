@@ -33,6 +33,16 @@ test('renders a dynamic left-turn pocket and changes the camera lane', async ({ 
   await captureRoadKeyframe(page, testInfo, 'left-turn-pocket-after')
 })
 
+test('starts on the right half of a two-way parking access aisle', async ({ page }, testInfo) => {
+  await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=0&seed=109')
+  const world = page.getByTestId('road-world')
+  await expect(world).toHaveAttribute('data-road-section', 'newmarket-parking-exit')
+  await expect(world).toHaveAttribute('data-lane-id', 'parking-access')
+  await expect.poll(async () => Number(await world.getAttribute('data-camera-x'))).toBeGreaterThan(1)
+  await expect(page.getByText('Two-way · 1 your direction + 1 opposing')).toBeVisible()
+  await captureRoadKeyframe(page, testInfo, 'parking-access-right-side-start')
+})
+
 test('keeps a continuous road visible while crossing a section boundary', async ({ page }, testInfo) => {
   await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=590&seed=107')
   const world = page.getByTestId('road-world')

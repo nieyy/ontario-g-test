@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createEngine, createRunConfig, resolveRunConfig, type EngineState } from '../domain/engine'
 import { defaultPreferences, loadPreferences, normalizeAttemptRecord, normalizeEngineCheckpoint, savePreferences, weakestScenario, weakestScenarioSuggestion } from './storage'
 import type { AttemptRecord } from '../content/types'
+import { newmarketRoadProfile } from '../content/roadProfiles/newmarket'
 
 describe('local data services', () => {
   beforeEach(() => window.localStorage.clear())
@@ -122,7 +123,7 @@ describe('local data services', () => {
       attemptId: 'v2', contentVersion: '1.1.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
       schemaVersion: 2, config, runtime: { originMode: 'practice', guidanceMode: 'guided', findingContext: 'practice' }, status: 'running', state: state as EngineState,
     })
-    expect(migrated).toMatchObject({ schemaVersion: 3, roadProfileId: 'newmarket-road-profile-v1', roadProfileVersion: '1.0.0' })
+    expect(migrated).toMatchObject({ schemaVersion: 3, roadProfileId: newmarketRoadProfile.id, roadProfileVersion: newmarketRoadProfile.version })
     expect(migrated?.state.route).toHaveLength(1)
     expect(migrated?.state.lane).toBe(0)
   })
@@ -150,7 +151,7 @@ describe('local data services', () => {
     const base = {
       attemptId: 'v3', contentVersion: '1.2.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
       schemaVersion: 3 as const, config, runtime: { originMode: 'exam' as const, guidanceMode: 'off' as const, findingContext: 'exam' as const }, status: 'running' as const,
-      state, roadProfileId: 'newmarket-road-profile-v1', roadProfileVersion: '1.0.0', routeSeed: 11,
+      state, roadProfileId: newmarketRoadProfile.id, roadProfileVersion: newmarketRoadProfile.version, routeSeed: 11,
     }
     expect(normalizeEngineCheckpoint(base)?.schemaVersion).toBe(3)
     expect(normalizeEngineCheckpoint({ ...base, roadProfileId: 'unknown' })).toBeUndefined()

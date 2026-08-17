@@ -72,7 +72,10 @@ const sections: RoadSectionDefinition[] = [
     lengthM: 180,
     speedLimitKph: 20,
     centerline: straight(180, 5),
-    lanes: [lane({ id: 'parking-access', role: 'parking-access', lengthM: 180, left: 'curb', right: 'curb' })],
+    lanes: [
+      lane({ id: 'parking-access', role: 'parking-access', lengthM: 180, offsetM: 1.8, left: 'single-yellow', right: 'curb' }),
+      lane({ id: 'parking-opposing', role: 'parking-access', lengthM: 180, offsetM: -1.8, direction: 'opposing', left: 'curb', right: 'single-yellow' }),
+    ],
     transitions: [],
     intersection: { atM: 150, control: 'stop-sign', crossRoadWidthM: 8, stopLineBeforeM: 5 },
     sourceRefs: contextual,
@@ -256,7 +259,7 @@ const movements: RouteMovement[] = [
 export const newmarketRoadProfile: CentreRoadProfile = {
   id: 'newmarket-road-profile-v1',
   centreId: 'newmarket',
-  version: '1.0.0',
+  version: '1.1.0',
   displayName: 'Newmarket-inspired teaching corridor',
   disclaimer: 'Teaching approximation · not an official, recorded, guaranteed or predicted DriveTest route.',
   sourceNotices: [
@@ -274,7 +277,7 @@ export const newmarketRoadProfile: CentreRoadProfile = {
     movements,
     traversalEdgeIds: edges.map((edge) => edge.id),
   }],
-  contentHash: 'newmarket-road-profile-v1-authored-20260816',
+  contentHash: 'newmarket-road-profile-v1.1-authored-20260817',
 }
 
 export const newmarketRouteBindings = {

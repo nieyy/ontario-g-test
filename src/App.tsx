@@ -8,6 +8,7 @@ import { PracticeSelect } from './components/PracticeSelect'
 import { RouteMiniMap } from './components/RouteMiniMap'
 import { newmarketCentre, scenarioLabels } from './content/data'
 import { getGuidancePlan } from './content/guidance'
+import { newmarketRoadProfile } from './content/roadProfiles/newmarket'
 import type {
   ActionType,
   AttemptRecordV2,
@@ -418,8 +419,8 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
           savedAt: new Date().toISOString(),
           state: engineRef.current,
           schemaVersion: 3,
-          roadProfileId: 'newmarket-road-profile-v1',
-          roadProfileVersion: '1.0.0',
+          roadProfileId: newmarketRoadProfile.id,
+          roadProfileVersion: newmarketRoadProfile.version,
           routeSeed: engineRef.current.seed,
           config,
           runtime,
@@ -457,8 +458,8 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
       savedAt: new Date().toISOString(),
       state: engine,
       schemaVersion: 3,
-      roadProfileId: 'newmarket-road-profile-v1',
-      roadProfileVersion: '1.0.0',
+      roadProfileId: newmarketRoadProfile.id,
+      roadProfileVersion: newmarketRoadProfile.version,
       routeSeed: engine.seed,
       config,
       runtime,
@@ -775,7 +776,7 @@ export default function App() {
       {view === 'report' && report && <Report attempt={report} restart={restart} history={() => setView('history')} />}
       {view === 'history' && <History attempts={attempts} practice={openPractice} remove={(id) => { if (window.confirm('Delete this local attempt?')) void deleteAttempt(id).then(refreshAttempts) }} clear={() => { if (window.confirm('Clear all local attempts and checkpoints?')) void clearAttempts().then(() => { setCheckpoint(undefined); refreshAttempts() }) }} />}
       {view === 'settings' && <Settings preferences={preferences} update={updatePreferences} />}
-      {view !== 'player' && <footer><p>{newmarketCentre.disclaimer}</p><p>App v1.2.0 · Content v{newmarketCentre.contentVersion} · Road profile v1.0.0 · No official score or route claim.</p></footer>}
+      {view !== 'player' && <footer><p>{newmarketCentre.disclaimer}</p><p>App v1.2.0 · Content v{newmarketCentre.contentVersion} · Road profile v{newmarketRoadProfile.version} · No official score or route claim.</p></footer>}
     </>
   )
 }

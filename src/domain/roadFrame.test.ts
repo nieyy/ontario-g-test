@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { buildRoadFrame } from './roadFrame'
 
 describe('road frame builder', () => {
+  it('starts the car in the right half of a two-way parking access aisle', () => {
+    const frame = buildRoadFrame({ position: { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-parking', sectionId: 'newmarket-parking-exit', sMeters: 0, laneId: 'parking-access' } })
+    const first = frame.slices[0]
+    const access = first.lanes.find((lane) => lane.laneId === 'parking-access')!
+    const opposing = first.lanes.find((lane) => lane.laneId === 'parking-opposing')!
+    expect(access.centre.x).toBeGreaterThan(first.centre.x)
+    expect(opposing.centre.x).toBeLessThan(first.centre.x)
+    expect(frame.camera.x).toBeCloseTo(access.centre.x)
+    expect(first.rightEdge.x - first.leftEdge.x).toBeCloseTo(7.2)
+    expect(access.leftMarking).toBe('single-yellow')
+    expect(opposing.rightMarking).toBe('single-yellow')
+  })
+
   it('builds only the visible road window and carries stable lane IDs', () => {
     const frame = buildRoadFrame({ position: { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-mainline', sectionId: 'highway-404-mainline', sMeters: 500, laneId: 'mainline-centre' } })
     expect(frame.slices[0].sM).toBeGreaterThanOrEqual(490)

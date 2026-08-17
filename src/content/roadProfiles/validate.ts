@@ -101,7 +101,7 @@ function validateSection(section: RoadSectionDefinition, laneIds: Set<string>): 
 
 export function validateRoadProfile(profile: CentreRoadProfile): string[] {
   const errors: string[] = []
-  if (!profile.id || profile.version !== '1.0.0' || profile.centreId !== 'newmarket') errors.push('[profile-identity] profile identity/version is invalid')
+  if (!profile.id || !/^\d+\.\d+\.\d+$/.test(profile.version) || profile.centreId !== 'newmarket') errors.push('[profile-identity] profile identity/version is invalid')
   if (!profile.disclaimer.toLowerCase().includes('not an official')) errors.push('[profile-disclaimer] profile must state that it is not an official route')
   if (!profile.routes.length) errors.push('[route-empty] at least one route is required')
 

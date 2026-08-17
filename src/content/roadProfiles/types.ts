@@ -105,7 +105,7 @@ export type RouteGraph = {
 export type CentreRoadProfile = {
   id: string
   centreId: 'newmarket'
-  version: '1.0.0'
+  version: string
   displayName: string
   disclaimer: string
   sourceNotices: string[]
