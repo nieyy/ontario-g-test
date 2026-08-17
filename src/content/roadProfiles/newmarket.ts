@@ -87,8 +87,8 @@ const sections: RoadSectionDefinition[] = [
     speedLimitKph: 50,
     centerline: straight(440, -8),
     lanes: [
-      lane({ id: 'local-forward', role: 'through', lengthM: 440, offsetM: 1.8, left: 'single-yellow', right: 'curb' }),
-      lane({ id: 'local-opposing', role: 'through', lengthM: 440, offsetM: -1.8, direction: 'opposing', left: 'curb', right: 'single-yellow' }),
+      lane({ id: 'local-forward', role: 'through', lengthM: 440, offsetM: 1.8, left: 'double-yellow', right: 'curb' }),
+      lane({ id: 'local-opposing', role: 'through', lengthM: 440, offsetM: -1.8, direction: 'opposing', left: 'curb', right: 'double-yellow' }),
     ],
     transitions: [],
     sourceRefs: contextual,
@@ -103,9 +103,9 @@ const sections: RoadSectionDefinition[] = [
     speedLimitKph: 50,
     centerline: straight(330),
     lanes: [
-      lane({ id: 'signal-through', role: 'through', lengthM: 330, offsetM: 1.8, left: 'single-yellow', right: 'dashed-white' }),
+      lane({ id: 'signal-through', role: 'through', lengthM: 330, offsetM: 1.8, left: 'double-yellow', right: 'dashed-white' }),
       lane({ id: 'signal-right-turn', role: 'right-turn', lengthM: 330, offsetProfile: [{ sM: 0, centerOffsetM: 3.6 }, { sM: 60, centerOffsetM: 5.4 }, { sM: 330, centerOffsetM: 5.4 }], left: 'dashed-white', right: 'curb', movements: ['right'], arrows: [{ atM: 185, movement: 'right' }, { atM: 220, movement: 'right' }] }),
-      lane({ id: 'signal-opposing', role: 'through', lengthM: 330, offsetM: -1.8, direction: 'opposing', left: 'curb', right: 'single-yellow' }),
+      lane({ id: 'signal-opposing', role: 'through', lengthM: 330, offsetM: -1.8, direction: 'opposing', left: 'curb', right: 'double-yellow' }),
     ],
     transitions: [{ id: 'signal-right-turn-split', atM: 0, taperLengthM: 60, kind: 'split', fromLaneIds: ['signal-through'], toLaneIds: ['signal-through', 'signal-right-turn'] }],
     intersection: { atM: 250, control: 'traffic-signal', crossRoadWidthM: 15, stopLineBeforeM: 7 },

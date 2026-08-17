@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ActionType, ScenarioVariant } from '../content/types'
 import type { RoadPosition } from '../content/roadProfiles/types'
 import { buildRoadFrame, type RoadFrame } from '../domain/roadFrame'
-import { activeForwardLanes, getRoadFacts } from '../domain/roadModel'
+import { activeForwardLanes, getRoadFacts, laneEffectiveWidth } from '../domain/roadModel'
 import {
   INTERSECTION_DISTANCE_METERS,
   INTERSECTION_HALF_DEPTH_METERS,
@@ -229,8 +229,8 @@ function drawTrafficLight(ctx: CanvasRenderingContext2D, camera: CameraPose, vie
 }
 
 function markingStyle(marking: string) {
-  if (marking === 'single-yellow' || marking === 'double-yellow') return { colour: '#ffd948', width: marking === 'double-yellow' ? 0.22 : 0.15 }
-  if (marking === 'curb') return { colour: '#f4f1df', width: 0.19 }
+  if (marking === 'single-yellow' || marking === 'double-yellow') return { colour: '#ffd23f', width: marking === 'double-yellow' ? 0.11 : 0.15 }
+  if (marking === 'curb') return { colour: '#aaa99f', width: 0.3 }
   if (marking === 'solid-white' || marking === 'dashed-white') return { colour: '#f5f1df', width: 0.13 }
   return undefined
 }
@@ -263,6 +263,7 @@ function drawProfileRoad(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewpo
   }
 
   for (const pair of pairs) {
+    const drawnBoundaries = new Set<string>()
     for (const lane of pair.from.lanes) {
       const nextLane = pair.to.lanes.find((candidate) => candidate.laneId === lane.laneId)
       if (!nextLane) continue
@@ -271,13 +272,15 @@ function drawProfileRoad(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewpo
         if (!style || (marking === 'dashed-white' && Math.floor((pair.from.sM + distance) / 9) % 2 !== 0)) continue
         const fromPoint = side === 'left' ? lane.leftEdge : lane.rightEdge
         const toPoint = side === 'left' ? nextLane.leftEdge : nextLane.rightEdge
-        worldLine(ctx,
-          fromPoint,
-          toPoint,
-          frame.camera, viewport, style.colour, style.width)
+        const boundaryKey = [marking, fromPoint.x, fromPoint.z, toPoint.x, toPoint.z].map((value) => typeof value === 'number' ? value.toFixed(3) : value).join(':')
+        if (drawnBoundaries.has(boundaryKey)) continue
+        drawnBoundaries.add(boundaryKey)
         if (marking === 'double-yellow') {
-          const shift = (point: WorldPoint, heading: number) => ({ x: point.x + Math.cos(heading) * 0.22, z: point.z - Math.sin(heading) * 0.22 })
-          worldLine(ctx, shift(fromPoint, pair.from.heading), shift(toPoint, pair.to.heading), frame.camera, viewport, style.colour, 0.11)
+          const shift = (point: WorldPoint, heading: number, amount: number) => ({ x: point.x + Math.cos(heading) * amount, z: point.z - Math.sin(heading) * amount })
+          worldLine(ctx, shift(fromPoint, pair.from.heading, -0.12), shift(toPoint, pair.to.heading, -0.12), frame.camera, viewport, style.colour, style.width)
+          worldLine(ctx, shift(fromPoint, pair.from.heading, 0.12), shift(toPoint, pair.to.heading, 0.12), frame.camera, viewport, style.colour, style.width)
+        } else {
+          worldLine(ctx, fromPoint, toPoint, frame.camera, viewport, style.colour, style.width)
         }
       }
     }
@@ -487,6 +490,13 @@ export function CanvasRoadScene(props: Props) {
   }, [camera, props, roadFrame, steeringAngle])
 
   const dynamicLanes = roadFacts ? activeForwardLanes(roadFacts.section, roadPosition.sMeters) : []
+  const activeRoadLanes = roadFacts
+    ? roadFacts.section.lanes.filter((item) => laneEffectiveWidth(roadFacts.section, item, roadPosition.sMeters) > 0.08)
+    : []
+  const opposingLaneCount = activeRoadLanes.filter((item) => item.direction === 'opposing').length
+  const roadLayoutLabel = opposingLaneCount > 0
+    ? `Two-way · ${dynamicLanes.length} your direction + ${opposingLaneCount} opposing`
+    : `${dynamicLanes.length} ${dynamicLanes.length === 1 ? 'lane' : 'lanes'} · one direction`
 
   return (
     <div className="road-frame" data-testid="road-world" data-camera-x={camera.x.toFixed(2)} data-camera-z={camera.z.toFixed(2)} data-camera-heading={camera.heading.toFixed(3)} data-road-ahead-m={roadFrame?.slices.at(-1)?.routeDistanceM.toFixed(1)} data-intersection-phase={phase ?? 'none'} data-road-section={roadPosition.sectionId} data-lane-id={roadPosition.laneId}>
@@ -494,6 +504,7 @@ export function CanvasRoadScene(props: Props) {
       <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>LEFT MIRROR</b><span /></div>
       <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>RIGHT MIRROR</b><span /></div>
       <div className="lane-indicator" aria-label="Current lane" aria-live="polite">
+        {roadProfileEnabled && <small className="road-layout-label">{roadLayoutLabel}</small>}
         {roadProfileEnabled
           ? dynamicLanes.map((item) => <span key={item.id} className={item.id === roadPosition.laneId ? 'current' : ''}><i aria-hidden="true">▲</i>{item.role.replace('-', ' ')}</span>)
           : (['Left', 'Centre', 'Right'] as const).map((name, index) => <span key={name} className={lane === index - 1 ? 'current' : ''}><i aria-hidden="true">▲</i>{name}</span>)}

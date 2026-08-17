@@ -29,6 +29,18 @@ describe('road frame builder', () => {
     expect(Math.hypot(after.centre.x - before.centre.x, after.centre.z - before.centre.z)).toBeLessThan(9)
   })
 
+  it('keeps the two-way centre boundary yellow and the outer boundaries as curbs', () => {
+    const frame = buildRoadFrame({ position: { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-local', sectionId: 'harry-walker-local', sMeters: 180, laneId: 'local-forward' } })
+    const current = frame.slices.reduce((closest, slice) => Math.abs(slice.sM - 180) < Math.abs(closest.sM - 180) ? slice : closest)
+    const forward = current.lanes.find((lane) => lane.laneId === 'local-forward')!
+    const opposing = current.lanes.find((lane) => lane.laneId === 'local-opposing')!
+    expect(forward.leftMarking).toBe('double-yellow')
+    expect(opposing.rightMarking).toBe('double-yellow')
+    expect(forward.rightMarking).toBe('curb')
+    expect(opposing.leftMarking).toBe('curb')
+    expect((forward.leftEdge.x + opposing.rightEdge.x) / 2).toBeCloseTo(current.centre.x)
+  })
+
   it('keeps steering heading signs conventional', () => {
     const position = { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-pocket', sectionId: 'left-turn-pocket', sMeters: 330, laneId: 'pocket-left-turn' }
     const left = buildRoadFrame({ position, turnDirection: 'left', turnProgress: 0.5 })

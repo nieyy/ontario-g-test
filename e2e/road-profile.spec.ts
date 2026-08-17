@@ -39,6 +39,7 @@ test('keeps a continuous road visible while crossing a section boundary', async 
   await expect(world).toHaveAttribute('data-road-section', 'harry-walker-local')
   await expect.poll(async () => Number(await world.getAttribute('data-road-ahead-m'))).toBeGreaterThanOrEqual(312)
   await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'true')
+  await expect(page.getByText('Two-way · 1 your direction + 1 opposing')).toBeVisible()
   await captureRoadKeyframe(page, testInfo, 'local-to-signal-continuous-road')
 })
 
