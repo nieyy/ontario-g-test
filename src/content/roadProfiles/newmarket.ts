@@ -104,10 +104,10 @@ const sections: RoadSectionDefinition[] = [
     centerline: straight(330),
     lanes: [
       lane({ id: 'signal-through', role: 'through', lengthM: 330, offsetM: 1.8, left: 'single-yellow', right: 'dashed-white' }),
-      lane({ id: 'signal-right-turn', role: 'right-turn', lengthM: 330, offsetM: 5.4, left: 'dashed-white', right: 'curb', movements: ['right'], arrows: [{ atM: 185, movement: 'right' }, { atM: 220, movement: 'right' }] }),
+      lane({ id: 'signal-right-turn', role: 'right-turn', lengthM: 330, offsetProfile: [{ sM: 0, centerOffsetM: 3.6 }, { sM: 60, centerOffsetM: 5.4 }, { sM: 330, centerOffsetM: 5.4 }], left: 'dashed-white', right: 'curb', movements: ['right'], arrows: [{ atM: 185, movement: 'right' }, { atM: 220, movement: 'right' }] }),
       lane({ id: 'signal-opposing', role: 'through', lengthM: 330, offsetM: -1.8, direction: 'opposing', left: 'curb', right: 'single-yellow' }),
     ],
-    transitions: [],
+    transitions: [{ id: 'signal-right-turn-split', atM: 0, taperLengthM: 60, kind: 'split', fromLaneIds: ['signal-through'], toLaneIds: ['signal-through', 'signal-right-turn'] }],
     intersection: { atM: 250, control: 'traffic-signal', crossRoadWidthM: 15, stopLineBeforeM: 7 },
     sourceRefs: authored,
     fidelity: 'authored-approximation',

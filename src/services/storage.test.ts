@@ -130,6 +130,9 @@ describe('local data services', () => {
   it('refuses an ambiguous two-lane v2 checkpoint without deleting history', () => {
     const config = resolveRunConfig(createRunConfig({ centreId: 'newmarket', mode: 'practice', seed: 10, scope: { kind: 'scenario', scenarioType: 'yellow-light', practiceSessionId: 'ambiguous', roundIndex: 1 } }))
     const state = structuredClone(createEngine(config)) as Partial<EngineState>
+    // The right-turn lane tapers in after the section starts. Place the legacy
+    // checkpoint beyond that taper so lane index 0 is genuinely ambiguous.
+    state.scenarioDistanceMeters = 100
     delete state.roadPosition
     delete state.laneOffsetM
     delete state.laneChangeFromOffsetM

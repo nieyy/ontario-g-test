@@ -236,23 +236,29 @@ function markingStyle(marking: string) {
 }
 
 function drawProfileRoad(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewport: Viewport, distance: number) {
-  const pairs = frame.slices.slice(0, -1).map((slice, index) => ({ from: slice, to: frame.slices[index + 1] })).sort((left, right) => right.from.sM - left.from.sM)
+  const pairs = frame.slices.slice(0, -1).map((slice, index) => ({ from: slice, to: frame.slices[index + 1] })).reverse()
   for (const pair of pairs) {
     projectPolygon(ctx, [
-      { x: pair.from.leftEdgeX, z: pair.from.centre.z },
-      { x: pair.from.rightEdgeX, z: pair.from.centre.z },
-      { x: pair.to.rightEdgeX, z: pair.to.centre.z },
-      { x: pair.to.leftEdgeX, z: pair.to.centre.z },
+      pair.from.leftEdge,
+      pair.from.rightEdge,
+      pair.to.rightEdge,
+      pair.to.leftEdge,
     ], frame.camera, viewport, '#343b41')
   }
 
   if (frame.intersection) {
     const halfDepth = frame.intersection.crossRoadWidthM / 2
+    const forward = { x: Math.sin(frame.intersection.heading), z: Math.cos(frame.intersection.heading) }
+    const across = { x: Math.cos(frame.intersection.heading), z: -Math.sin(frame.intersection.heading) }
+    const point = (acrossM: number, forwardM: number) => ({
+      x: frame.intersection!.centre.x + across.x * acrossM + forward.x * forwardM,
+      z: frame.intersection!.centre.z + across.z * acrossM + forward.z * forwardM,
+    })
     projectPolygon(ctx, [
-      { x: frame.intersection.centre.x - 90, z: frame.intersection.centre.z - halfDepth },
-      { x: frame.intersection.centre.x + 90, z: frame.intersection.centre.z - halfDepth },
-      { x: frame.intersection.centre.x + 90, z: frame.intersection.centre.z + halfDepth },
-      { x: frame.intersection.centre.x - 90, z: frame.intersection.centre.z + halfDepth },
+      point(-90, -halfDepth),
+      point(90, -halfDepth),
+      point(90, halfDepth),
+      point(-90, halfDepth),
     ], frame.camera, viewport, '#343b41')
   }
 
@@ -263,15 +269,16 @@ function drawProfileRoad(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewpo
       for (const [side, marking] of [['left', lane.leftMarking], ['right', lane.rightMarking]] as const) {
         const style = markingStyle(marking)
         if (!style || (marking === 'dashed-white' && Math.floor((pair.from.sM + distance) / 9) % 2 !== 0)) continue
-        const sign = side === 'left' ? -1 : 1
+        const fromPoint = side === 'left' ? lane.leftEdge : lane.rightEdge
+        const toPoint = side === 'left' ? nextLane.leftEdge : nextLane.rightEdge
         worldLine(ctx,
-          { x: lane.centre.x + sign * lane.widthM / 2, z: lane.centre.z },
-          { x: nextLane.centre.x + sign * nextLane.widthM / 2, z: nextLane.centre.z },
+          fromPoint,
+          toPoint,
           frame.camera, viewport, style.colour, style.width)
-        if (marking === 'double-yellow') worldLine(ctx,
-          { x: lane.centre.x + sign * lane.widthM / 2 + 0.22, z: lane.centre.z },
-          { x: nextLane.centre.x + sign * nextLane.widthM / 2 + 0.22, z: nextLane.centre.z },
-          frame.camera, viewport, style.colour, 0.11)
+        if (marking === 'double-yellow') {
+          const shift = (point: WorldPoint, heading: number) => ({ x: point.x + Math.cos(heading) * 0.22, z: point.z - Math.sin(heading) * 0.22 })
+          worldLine(ctx, shift(fromPoint, pair.from.heading), shift(toPoint, pair.to.heading), frame.camera, viewport, style.colour, 0.11)
+        }
       }
     }
   }
@@ -291,22 +298,29 @@ function drawProfileRoad(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewpo
   }
 
   if (!frame.intersection) return
-  const stopAhead = frame.intersection.stopLineZ - frame.camera.z
+  const stopAhead = frame.intersection.distanceAheadM - 7
   if (stopAhead >= 7 && stopAhead <= 95) {
-    const nearest = frame.slices.reduce((best, slice) => Math.abs(slice.centre.z - frame.intersection!.stopLineZ) < Math.abs(best.centre.z - frame.intersection!.stopLineZ) ? slice : best)
+    const nearest = frame.slices.reduce((best, slice) => Math.abs(slice.routeDistanceM - stopAhead) < Math.abs(best.routeDistanceM - stopAhead) ? slice : best)
+    const forward = { x: Math.sin(frame.intersection.heading), z: Math.cos(frame.intersection.heading) }
+    const shift = (point: WorldPoint, amount: number) => ({ x: point.x + forward.x * amount, z: point.z + forward.z * amount })
     projectPolygon(ctx, [
-      { x: nearest.leftEdgeX, z: frame.intersection.stopLineZ - 0.22 },
-      { x: nearest.rightEdgeX, z: frame.intersection.stopLineZ - 0.22 },
-      { x: nearest.rightEdgeX, z: frame.intersection.stopLineZ + 0.22 },
-      { x: nearest.leftEdgeX, z: frame.intersection.stopLineZ + 0.22 },
+      shift(nearest.leftEdge, -0.22),
+      shift(nearest.rightEdge, -0.22),
+      shift(nearest.rightEdge, 0.22),
+      shift(nearest.leftEdge, 0.22),
     ], frame.camera, viewport, '#ffffff')
   }
 }
 
 function drawProfileTrafficLight(ctx: CanvasRenderingContext2D, frame: RoadFrame, viewport: Viewport, colour: 'red' | 'yellow' | 'green') {
   if (!frame.intersection || frame.intersection.control !== 'traffic-signal') return false
-  const nearest = frame.slices.reduce((best, slice) => Math.abs(slice.centre.z - frame.intersection!.centre.z) < Math.abs(best.centre.z - frame.intersection!.centre.z) ? slice : best)
-  const base = worldToScreen({ x: nearest.rightEdgeX + 2.4, z: frame.intersection.centre.z - frame.intersection.crossRoadWidthM / 2 }, frame.camera, viewport.width, viewport.height)
+  const nearest = frame.slices.reduce((best, slice) => Math.abs(slice.routeDistanceM - frame.intersection!.distanceAheadM) < Math.abs(best.routeDistanceM - frame.intersection!.distanceAheadM) ? slice : best)
+  const forward = { x: Math.sin(frame.intersection.heading), z: Math.cos(frame.intersection.heading) }
+  const across = { x: Math.cos(frame.intersection.heading), z: -Math.sin(frame.intersection.heading) }
+  const base = worldToScreen({
+    x: nearest.rightEdge.x + across.x * 2.4 - forward.x * frame.intersection.crossRoadWidthM / 2,
+    z: nearest.rightEdge.z + across.z * 2.4 - forward.z * frame.intersection.crossRoadWidthM / 2,
+  }, frame.camera, viewport.width, viewport.height)
   if (!base) return false
   const poleHeight = Math.max(30, 155 * base.scale)
   const boxWidth = Math.max(16, 45 * base.scale)
@@ -426,7 +440,7 @@ export function CanvasRoadScene(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const roadFrame = roadProfileEnabled ? buildRoadFrame({ position: roadPosition, laneOffsetM: reducedMotion ? getRoadFacts(roadPosition).laneOffsetM : laneOffsetM, turnDirection, turnProgress }) : undefined
   const hasIntersection = roadFrame ? Boolean(roadFrame.intersection) : INTERSECTION_TYPES.has(scenario.type)
-  const intersectionDistance = roadFrame?.intersection ? roadFrame.intersection.centre.z - roadFrame.camera.z : undefined
+  const intersectionDistance = roadFrame?.intersection?.distanceAheadM
   const phase = roadFrame
     ? intersectionDistance === undefined ? null : intersectionDistance > 115 ? 'ahead' : intersectionDistance > 35 ? 'approaching' : intersectionDistance > 7 ? 'decision' : intersectionDistance > -18 ? 'crossing' : 'passed'
     : hasIntersection ? intersectionPhase(scenarioDistanceMeters) : null
@@ -475,7 +489,7 @@ export function CanvasRoadScene(props: Props) {
   const dynamicLanes = roadFacts ? activeForwardLanes(roadFacts.section, roadPosition.sMeters) : []
 
   return (
-    <div className="road-frame" data-testid="road-world" data-camera-x={camera.x.toFixed(2)} data-camera-z={camera.z.toFixed(2)} data-camera-heading={camera.heading.toFixed(3)} data-intersection-phase={phase ?? 'none'} data-road-section={roadPosition.sectionId} data-lane-id={roadPosition.laneId}>
+    <div className="road-frame" data-testid="road-world" data-camera-x={camera.x.toFixed(2)} data-camera-z={camera.z.toFixed(2)} data-camera-heading={camera.heading.toFixed(3)} data-road-ahead-m={roadFrame?.slices.at(-1)?.routeDistanceM.toFixed(1)} data-intersection-phase={phase ?? 'none'} data-road-section={roadPosition.sectionId} data-lane-id={roadPosition.laneId}>
       <canvas ref={canvasRef} className="road-scene" width="1920" height="1080" role="img" aria-label={label} data-testid="driving-canvas" data-lane-position={(reducedMotion ? lane : lanePosition).toFixed(2)} data-lane-offset={(roadProfileEnabled ? laneOffsetM : lanePosition * 3.6).toFixed(2)} data-steering-angle={steeringAngle.toFixed(1)} />
       <div className={`mirror mirror-left ${recentAction === 'mirror-left' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>LEFT MIRROR</b><span /></div>
       <div className={`mirror mirror-right ${recentAction === 'mirror-right' ? 'mirror-checked' : ''}`} aria-hidden="true"><b>RIGHT MIRROR</b><span /></div>

@@ -5,7 +5,7 @@ describe('road frame builder', () => {
   it('builds only the visible road window and carries stable lane IDs', () => {
     const frame = buildRoadFrame({ position: { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-mainline', sectionId: 'highway-404-mainline', sMeters: 500, laneId: 'mainline-centre' } })
     expect(frame.slices[0].sM).toBeGreaterThanOrEqual(490)
-    expect(frame.slices.at(-1)!.sM).toBeLessThanOrEqual(820)
+    expect(frame.slices.at(-1)!.routeDistanceM).toBeLessThanOrEqual(320)
     expect(frame.slices.some((slice) => slice.lanes.some((lane) => lane.laneId === 'mainline-centre'))).toBe(true)
     expect(frame.roadSummary).toContain('3 forward lanes')
   })
@@ -17,6 +17,16 @@ describe('road frame builder', () => {
     expect(near.intersection?.centre.z).toBe(380)
     expect(near.intersection!.centre.z - near.camera.z).toBeLessThan(far.intersection!.centre.z - far.camera.z)
     expect(near.arrows.some((arrow) => arrow.movement === 'left' && arrow.laneId === 'pocket-left-turn')).toBe(true)
+  })
+
+  it('continues the visible road into the next section instead of ending in grass', () => {
+    const frame = buildRoadFrame({ position: { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-local', sectionId: 'harry-walker-local', sMeters: 410, laneId: 'local-forward' } })
+    expect(frame.slices.at(-1)!.routeDistanceM).toBeGreaterThanOrEqual(312)
+    expect(frame.slices.some((slice) => slice.lanes.some((lane) => lane.laneId === 'signal-through'))).toBe(true)
+    const seamIndex = frame.slices.findIndex((slice) => slice.lanes.some((lane) => lane.laneId === 'signal-through'))
+    const before = frame.slices[seamIndex - 1]
+    const after = frame.slices[seamIndex]
+    expect(Math.hypot(after.centre.x - before.centre.x, after.centre.z - before.centre.z)).toBeLessThan(9)
   })
 
   it('keeps steering heading signs conventional', () => {

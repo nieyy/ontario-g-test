@@ -33,6 +33,15 @@ test('renders a dynamic left-turn pocket and changes the camera lane', async ({ 
   await captureRoadKeyframe(page, testInfo, 'left-turn-pocket-after')
 })
 
+test('keeps a continuous road visible while crossing a section boundary', async ({ page }, testInfo) => {
+  await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=590&seed=107')
+  const world = page.getByTestId('road-world')
+  await expect(world).toHaveAttribute('data-road-section', 'harry-walker-local')
+  await expect.poll(async () => Number(await world.getAttribute('data-road-ahead-m'))).toBeGreaterThanOrEqual(312)
+  await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'true')
+  await captureRoadKeyframe(page, testInfo, 'local-to-signal-continuous-road')
+})
+
 test('renders local, signal, ramp and exit sections as distinct keyframes', async ({ page }, testInfo) => {
   await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=260&seed=102')
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'harry-walker-local')
