@@ -7,7 +7,6 @@ type Props = {
   route: ScenarioVariant[]
   scenarioIndex: number
   scenarioElapsed: number
-  roadProfileEnabled?: boolean
   roadPosition?: RoadPosition
 }
 
@@ -20,8 +19,8 @@ const schematicPoints = [
   { x: 112, y: 20 },
 ]
 
-export function RouteMiniMap({ route, scenarioIndex, scenarioElapsed, roadProfileEnabled = false, roadPosition }: Props) {
-  if (roadProfileEnabled && roadPosition) {
+export function RouteMiniMap({ route, scenarioIndex, scenarioElapsed, roadPosition }: Props) {
+  if (roadPosition) {
     const model = getRouteMiniMap(roadPosition)
     return (
       <div className="route-mini-map" aria-label={`Newmarket-inspired teaching route. Current road: ${model.currentLabel}.`}>

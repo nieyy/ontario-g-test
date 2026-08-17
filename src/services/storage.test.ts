@@ -118,7 +118,6 @@ describe('local data services', () => {
     delete state.roadPosition
     delete state.laneOffsetM
     delete state.laneChangeFromOffsetM
-    delete state.roadProfileEnabled
     const migrated = normalizeEngineCheckpoint({
       attemptId: 'v2', contentVersion: '1.1.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
       schemaVersion: 2, config, runtime: { originMode: 'practice', guidanceMode: 'guided', findingContext: 'practice' }, status: 'running', state: state as EngineState,
@@ -137,7 +136,6 @@ describe('local data services', () => {
     delete state.roadPosition
     delete state.laneOffsetM
     delete state.laneChangeFromOffsetM
-    delete state.roadProfileEnabled
     const migrated = normalizeEngineCheckpoint({
       attemptId: 'ambiguous', contentVersion: '1.1.0', startedAt: '2026-08-16T00:00:00.000Z', savedAt: '2026-08-16T00:00:02.000Z',
       schemaVersion: 2, config, runtime: { originMode: 'practice', guidanceMode: 'guided', findingContext: 'practice' }, status: 'running', state: state as EngineState,

@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.3.0 — 2026-08-17
+
+- Replaced the legacy 2D Canvas driving view with one React Three Fiber/Three.js low-poly renderer; there is no runtime Canvas fallback.
+- Added deterministic route-scene and render-snapshot contracts so road geometry, markings, signals, traffic, camera, scoring, coaching, and the mini-map share the same simulation state.
+- Added procedural Newmarket-inspired roadside context, cockpit and mirror framing, scripted traffic, lighting, fog, and device-aware quality tiers without Street View, map SDKs, or remote 3D assets.
+- Added recoverable WebGL 2 capability/context-loss handling that preserves and pauses the current attempt.
+- Added 3D content validation, asset-policy checks, bundle budgets, renderer metrics, unit coverage, and Chromium/WebKit WebGL release tests.
+
 ## 1.2.0 — 2026-08-16
 
 - Added the versioned `newmarket-road-profile-v1` authored teaching corridor.

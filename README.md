@@ -1,6 +1,6 @@
 # Ontario G Practice
 
-A static, first-person interactive study game for Ontario G road-test preparation. Version 1.2 adds a content-driven Newmarket-inspired teaching corridor to Exam mode, full-route Guided Practice, and focused scenario practice.
+A static, first-person interactive study game for Ontario G road-test preparation. Version 1.3 renders the Newmarket-inspired teaching corridor as a deterministic low-poly Three.js world in Exam mode, full-route Guided Practice, and focused scenario practice.
 
 Play it at <https://nieyy.github.io/ontario-g-test/>.
 
@@ -8,13 +8,14 @@ Play it at <https://nieyy.github.io/ontario-g-test/>.
 
 - Newmarket centre selection with a clear evidence and route disclaimer
 - A deterministic authored corridor with parking departure, one-lane local road, two-lane arterial, visible left-turn pocket, traffic signals, curved freeway entrance, three-lane mainline, exit lane, and return context
-- Stable road, edge, section, and lane IDs shared by the driving engine, Canvas scene, controls, coaching facts, scoring facts, checkpoint, and route mini-map
+- Stable road, edge, section, and lane IDs shared by the driving engine, Three.js scene, controls, coaching facts, scoring facts, checkpoint, and route mini-map
 - Three authored variants for each of six scenario families: right on red, yellow-light decisions, multi-lane left turns, freeway merging, slow lead vehicles, and freeway exits
 - Exam mode with no teaching prompts, and Guided Practice with controlled Mirror–Signal–Shoulder coaching
 - Full-route Guided Practice or focused scenario rounds with same-situation and next-variation retry
 - Mouse, touch, and keyboard input (`WASD`/arrows, `Z`/`C` signals, `Q`/`E` mirrors, `Shift+Q`/`Shift+E` shoulder checks; `,`/`.` remain signal aliases)
 - Browser `en-CA` speech with optional Chinese subtitles
-- A fixed-step, seeded TypeScript simulation and visible-range RoadFrame builder independent from React rendering
+- A fixed-step, seeded TypeScript simulation, serializable route-scene model, and shared render snapshot independent from React Three Fiber rendering
+- Procedural low-poly roads, markings, intersections, signals, roadside landmarks, traffic, cockpit, lighting, fog, and quality tiers; no Street View, map SDK, remote 3D assets, or runtime renderer fallback
 - Dangerous-event pause with an explicit “end” or “continue as practice” choice
 - Situation–action–impact–improvement report, five learning dimensions, event timeline, and recent-attempt weakness suggestion
 - IndexedDB checkpoint schema v3 with conservative v2 migration; completed history remains schema v2 and is never uploaded
@@ -52,11 +53,11 @@ Centre, scenario, and controlled GuidancePlan content lives in `src/content`. Ev
 
 The Newmarket address and available G service are linked to the official DriveTest centre listing. Town of Newmarket public material supports regional road-name context. `src/content/roadProfiles` contains the versioned profile, lightweight source ledger, topology validator, and all hand-authored geometry. Runtime code makes no map-service request.
 
-The Pages workflow enables the v1 road profile with `VITE_NEWMARKET_ROAD_PROFILE_ENABLED=true`. Any other value retains the 1.1 fixed-road compatibility path for one rollback cycle.
+The v1 road profile is the single production road source. The driving view requires WebGL 2 and deliberately has no legacy Canvas fallback; unsupported or lost graphics contexts pause the drive and show a recoverable explanation instead of silently changing renderer semantics.
 
 ## Deployment
 
-The GitHub Actions workflow verifies content, lint, unit tests, an enabled production build, Chromium/WebKit E2E tests, checkpoint compatibility, and accessibility before deploying `dist` to GitHub Pages from `main`. Vite uses the project-site base path `/ontario-g-test/`.
+The GitHub Actions workflow verifies content and 3D asset policy, lint, unit tests, production bundle budget, Chromium/WebKit WebGL flows, renderer-failure handling, checkpoint compatibility, and accessibility before deploying `dist` to GitHub Pages from `main`. Vite uses the project-site base path `/ontario-g-test/`.
 
 ## License
 

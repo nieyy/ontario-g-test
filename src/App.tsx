@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './styles.css'
-import { CanvasRoadScene } from './components/CanvasRoadScene'
 import { CoachPanel } from './components/CoachPanel'
 import { ModeSelect } from './components/ModeSelect'
 import { PracticeRoundSummary } from './components/PracticeRoundSummary'
@@ -26,9 +25,6 @@ import {
   createEngine,
   createRunConfig,
   currentScenario,
-  INTERSECTION_DECISION_DISTANCE_METERS,
-  INTERSECTION_TURN_EXIT_DISTANCE_METERS,
-  LANE_CHANGE_DURATION_SECONDS,
   recordAction,
   resolveRunConfig,
   resolveDanger,
@@ -63,6 +59,7 @@ import { speakInstruction } from './services/speech'
 import { createRoadAmbience, type RoadAmbience } from './services/roadAmbience'
 
 type View = 'home' | 'centre' | 'mode-select' | 'practice-select' | 'briefing' | 'player' | 'round-summary' | 'report' | 'history' | 'settings'
+const ThreeRoadScene = lazy(() => import('./components/ThreeRoadScene').then((module) => ({ default: module.ThreeRoadScene })))
 const PRACTICE_MODE_ENABLED = true
 type PedalAction = 'accelerate' | 'brake'
 
@@ -135,7 +132,7 @@ function Home({ start, practiceWeak, weakType, resume, resumeNotice }: { start: 
         <div className="hero-copy">
           <p className="eyebrow">Independent, local-first practice</p>
           <h1>Make the G-test routine visible before test day.</h1>
-          <p className="lede">A 16-minute interactive Newmarket-inspired practice drive: follow an authored corridor with changing local-road, turn-pocket, arterial, freeway and exit structures, then review each decision.</p>
+          <p className="lede">A 16-minute interactive Newmarket-inspired practice drive: follow an authored low-poly 3D corridor with changing local-road, turn-pocket, arterial, freeway and exit structures, then review each decision.</p>
           <div className="hero-actions">
             <button className="primary large" onClick={start}>Choose a test centre</button>
             {resume && <button className="secondary large" onClick={resume}>Resume interrupted drive</button>}
@@ -154,7 +151,7 @@ function Home({ start, practiceWeak, weakType, resume, resumeNotice }: { start: 
       </section>
       <section className="feature-grid" aria-label="Training features">
         <article><span>01</span><h2>Hear the instruction</h2><p>Common Ontario-style English prompts with optional Chinese subtitles.</p></article>
-        <article><span>02</span><h2>Make the decision</h2><p>Mouse, touch, or racing-game-inspired keyboard controls on a 2.5D road.</p></article>
+        <article><span>02</span><h2>Make the decision</h2><p>Mouse, touch, or racing-game-inspired keyboard controls in a lightweight 3D road world.</p></article>
         <article><span>03</span><h2>Review the evidence</h2><p>Situation–action–impact–improvement findings, without invented pass scores.</p></article>
       </section>
     </main>
@@ -252,14 +249,12 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
     const parameters = new URLSearchParams(window.location.search)
     const debugDistance = Number(parameters.get('startDistance'))
     if (parameters.get('debug') === '1' && Number.isFinite(debugDistance) && debugDistance > 0) {
-      const roadPosition = created.roadProfileEnabled
-        ? advanceRoadPosition(created.roadPosition, debugDistance, created.route[0].routeBinding)
-        : created.roadPosition
+      const roadPosition = advanceRoadPosition(created.roadPosition, debugDistance, created.route[0].routeBinding)
       return {
         ...created,
         scenarioDistanceMeters: debugDistance,
         roadPosition,
-        laneOffsetM: created.roadProfileEnabled ? getRoadFacts(roadPosition).laneOffsetM : created.laneOffsetM,
+        laneOffsetM: getRoadFacts(roadPosition).laneOffsetM,
       }
     }
     return created
@@ -485,25 +480,15 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
   const totalDuration = engine.route.reduce((sum, item) => sum + item.durationSeconds, 0)
   const remaining = totalDuration - engine.elapsed
   const checklist = new Set(engine.scenarioActions.map((action) => action.type))
-  const roadFacts = engine.roadProfileEnabled ? getRoadFacts(engine.roadPosition) : undefined
+  const roadFacts = getRoadFacts(engine.roadPosition)
   const leftLaneAction = roadFacts?.availableLaneActions.find((action) => action.direction === 'left')
   const rightLaneAction = roadFacts?.availableLaneActions.find((action) => action.direction === 'right')
   const leftLaneTarget = leftLaneAction?.targetRole.replace('-', ' ') ?? (engine.lane === 1 ? 'Centre' : 'Left')
   const rightLaneTarget = rightLaneAction?.targetRole.replace('-', ' ') ?? (engine.lane === -1 ? 'Centre' : 'Right')
-  const inTurnZone = engine.roadProfileEnabled
-    ? engine.roadPosition.edgeId === scenario.routeBinding.decisionEdgeId && roadFacts?.intersectionDistanceMeters !== undefined && roadFacts.intersectionDistanceMeters <= 75 && roadFacts.intersectionDistanceMeters >= -8
-    : engine.scenarioDistanceMeters >= INTERSECTION_DECISION_DISTANCE_METERS && engine.scenarioDistanceMeters <= INTERSECTION_TURN_EXIT_DISTANCE_METERS
+  const inTurnZone = engine.roadPosition.edgeId === scenario.routeBinding.decisionEdgeId && roadFacts.intersectionDistanceMeters !== undefined && roadFacts.intersectionDistanceMeters <= 75 && roadFacts.intersectionDistanceMeters >= -8
   const canTurnLeft = inTurnZone && canStartTurn(engine, 'turn-left')
   const canTurnRight = inTurnZone && canStartTurn(engine, 'turn-right')
   const laneChanging = engine.laneChangeFrom !== null
-  const laneChangeDirection = laneChanging
-    ? engine.roadProfileEnabled
-      ? Math.sign(getRoadFacts(engine.roadPosition).laneOffsetM - (engine.laneChangeFromOffsetM ?? engine.laneOffsetM)) as -1 | 1
-      : Math.sign(engine.lane - engine.laneChangeFrom!) as -1 | 1
-    : 0
-  const laneChangeProgress = laneChanging
-    ? Math.min(1, engine.laneChangeElapsed / LANE_CHANGE_DURATION_SECONDS)
-    : 1
   const keyLabel = (action: ActionType) => preferences.keyBindings.find((binding) => binding.action === action)?.label ?? '—'
   const coachFrame = coach && guidancePlan && runtime.guidanceMode === 'guided'
     ? toCoachFrame({ coach, plan: guidancePlan, keyBindings: preferences.keyBindings, subtitlesZh: preferences.subtitlesZh })
@@ -555,10 +540,12 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
       <div className="progress-track"><span style={{ width: `${Math.min(100, (engine.elapsed / totalDuration) * 100)}%` }} /></div>
       <section className="drive-layout">
         <div className="scene-column">
-          <CanvasRoadScene scenario={scenario} speedKph={engine.speedKph} lane={engine.lane} lanePosition={engine.lanePosition} laneChangeDirection={laneChangeDirection} laneChangeProgress={laneChangeProgress} signal={engine.signal} recentAction={recentAction} scenarioElapsed={engine.scenarioElapsed} scenarioDistanceMeters={engine.scenarioDistanceMeters} turnDirection={engine.turnDirection} turnProgress={engine.turnProgress} turnStartDistanceMeters={engine.turnStartDistanceMeters} reducedMotion={preferences.reducedMotion} roadProfileEnabled={engine.roadProfileEnabled} roadPosition={engine.roadPosition} laneOffsetM={engine.laneOffsetM} />
+          <Suspense fallback={<div className="road-frame renderer-status" aria-live="polite">Loading the 3D driving module…</div>}>
+            <ThreeRoadScene engine={engine} scenario={scenario} recentAction={recentAction} reducedMotion={preferences.reducedMotion} onRendererBlocked={() => setManualPaused(true)} />
+          </Suspense>
           <p className="sr-only" aria-live="polite">{roadFacts ? `${roadFacts.section.trainingLabel}. ${roadFacts.forwardLaneCount} forward lanes. Current lane role ${roadFacts.laneRole}.` : `Current ${engine.lane === -1 ? 'left' : engine.lane === 1 ? 'right' : 'centre'} lane.`}</p>
-          <button className={`lane-target lane-target-left ${highlightedAction === 'lane-left' ? 'coach-highlight' : ''}`} disabled={engine.turnDirection !== null || laneChanging || (engine.roadProfileEnabled ? !leftLaneAction : engine.lane === -1)} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
-          <button className={`lane-target lane-target-right ${highlightedAction === 'lane-right' ? 'coach-highlight' : ''}`} disabled={engine.turnDirection !== null || laneChanging || (engine.roadProfileEnabled ? !rightLaneAction : engine.lane === 1)} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
+          <button className={`lane-target lane-target-left ${highlightedAction === 'lane-left' ? 'coach-highlight' : ''}`} disabled={engine.turnDirection !== null || laneChanging || !leftLaneAction} onClick={() => perform('lane-left')} aria-label={`Move one lane left to ${leftLaneTarget} lane`}><span>← MOVE 1 LANE</span><small>to {leftLaneTarget}</small><kbd>{keyLabel('lane-left')}</kbd></button>
+          <button className={`lane-target lane-target-right ${highlightedAction === 'lane-right' ? 'coach-highlight' : ''}`} disabled={engine.turnDirection !== null || laneChanging || !rightLaneAction} onClick={() => perform('lane-right')} aria-label={`Move one lane right to ${rightLaneTarget} lane`}><span>MOVE 1 LANE →</span><small>to {rightLaneTarget}</small><kbd>{keyLabel('lane-right')}</kbd></button>
           {inTurnZone && engine.turnDirection === null && scenario.type === 'multilane-left' && <button className={`turn-command turn-command-left ${highlightedAction === 'turn-left' ? 'coach-highlight' : ''}`} disabled={!canTurnLeft || laneChanging} onClick={() => perform('turn-left')} aria-label="Turn left at the intersection"><span>↰ TURN LEFT</span><small>{canTurnLeft && !laneChanging ? 'turn now' : 'move to left lane first'}</small><kbd>←</kbd></button>}
           {inTurnZone && engine.turnDirection === null && scenario.type === 'right-on-red' && <button className={`turn-command turn-command-right ${highlightedAction === 'turn-right' ? 'coach-highlight' : ''}`} disabled={!canTurnRight || laneChanging} onClick={() => perform('turn-right')} aria-label="Turn right at the intersection"><span>TURN RIGHT ↱</span><small>{canTurnRight && !laneChanging ? 'turn now' : 'move to right lane first'}</small><kbd>→</kbd></button>}
           <div className="examiner-card" aria-live="polite">
@@ -567,11 +554,11 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
             <button onClick={() => speakInstruction(scenario.examinerInstruction, true)} aria-label="Repeat examiner instruction">↻</button>
           </div>
           <div className="route-progress-card" aria-label={`Practice route map: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
-            <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} roadProfileEnabled={engine.roadProfileEnabled} roadPosition={engine.roadPosition} />
+            <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} roadPosition={engine.roadPosition} />
           </div>
         </div>
         <div className="mobile-route-progress-card" aria-label={`Practice route map: scene ${engine.scenarioIndex + 1} of ${engine.route.length}`}>
-          <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} roadProfileEnabled={engine.roadProfileEnabled} roadPosition={engine.roadPosition} />
+          <RouteMiniMap route={engine.route} scenarioIndex={engine.scenarioIndex} scenarioElapsed={engine.scenarioElapsed} roadPosition={engine.roadPosition} />
         </div>
         {coachFrame && <CoachPanel frame={coachFrame} />}
         <aside className="control-deck" aria-label="Driving controls">
@@ -618,7 +605,7 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
           <div className="modal-actions"><button className="secondary" onClick={retryDangerousScene}>Retry this scene</button><button className="primary" autoFocus onClick={() => setEngine((state) => resolveDanger(state, 'continue'))}>Continue from here</button></div>
         </section></div>
       )}
-      {new URLSearchParams(window.location.search).get('debug') === '1' && <aside className="debug-panel" aria-label="Local debug information">engine 1.2 · content {newmarketCentre.contentVersion} · {runtime.originMode}/{runtime.findingContext} · seed {engine.seed} · {engine.roadPosition.edgeId}/{engine.roadPosition.sectionId}/{engine.roadPosition.laneId}@{Math.round(engine.roadPosition.sMeters)}m · actions {engine.actions.length}{coach ? ` · coach ${coach.planId}:${coach.currentStepIndex}` : ''}</aside>}
+      {new URLSearchParams(window.location.search).get('debug') === '1' && <aside className="debug-panel" aria-label="Local debug information">engine 1.3 · content {newmarketCentre.contentVersion} · Three.js/{runtime.originMode}/{runtime.findingContext} · seed {engine.seed} · {engine.roadPosition.edgeId}/{engine.roadPosition.sectionId}/{engine.roadPosition.laneId}@{Math.round(engine.roadPosition.sMeters)}m · actions {engine.actions.length}{coach ? ` · coach ${coach.planId}:${coach.currentStepIndex}` : ''}</aside>}
     </main>
   )
 }
@@ -776,7 +763,7 @@ export default function App() {
       {view === 'report' && report && <Report attempt={report} restart={restart} history={() => setView('history')} />}
       {view === 'history' && <History attempts={attempts} practice={openPractice} remove={(id) => { if (window.confirm('Delete this local attempt?')) void deleteAttempt(id).then(refreshAttempts) }} clear={() => { if (window.confirm('Clear all local attempts and checkpoints?')) void clearAttempts().then(() => { setCheckpoint(undefined); refreshAttempts() }) }} />}
       {view === 'settings' && <Settings preferences={preferences} update={updatePreferences} />}
-      {view !== 'player' && <footer><p>{newmarketCentre.disclaimer}</p><p>App v1.2.0 · Content v{newmarketCentre.contentVersion} · Road profile v{newmarketRoadProfile.version} · No official score or route claim.</p></footer>}
+      {view !== 'player' && <footer><p>{newmarketCentre.disclaimer} Low-poly 3D teaching approximation; no Street View or official route data.</p><p>App v1.3.0 · Content v{newmarketCentre.contentVersion} · Road profile v{newmarketRoadProfile.version} · No official score or route claim.</p></footer>}
     </>
   )
 }

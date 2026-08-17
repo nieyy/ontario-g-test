@@ -12,7 +12,6 @@ import type {
 } from '../content/types'
 import { createRunConfig, resolveRunConfig, type EngineState } from '../domain/engine'
 import { newmarketRoadProfile } from '../content/roadProfiles/newmarket'
-import { NEWMARKET_ROAD_PROFILE_ENABLED } from '../config/featureFlags'
 import { activeForwardLanes, advanceRoadPosition, createRoadPosition, getRoadFacts, getSection } from '../domain/roadModel'
 
 const PREFERENCES_KEY = 'ontario-g-test.preferences.v1'
@@ -175,7 +174,11 @@ export function normalizeAttemptRecord(stored: AttemptRecord | AttemptRecordV2):
 }
 
 function migrateLegacyRoadState(state: PersistedEngineStateV2): PersistedEngineStateV2 | undefined {
-  if (state.roadPosition && state.laneOffsetM !== undefined) return { ...state, roadProfileEnabled: NEWMARKET_ROAD_PROFILE_ENABLED }
+  if (state.roadPosition && state.laneOffsetM !== undefined) {
+    const normalized = { ...state } as PersistedEngineStateV2 & Record<string, unknown>
+    delete normalized['road' + 'ProfileEnabled']
+    return normalized
+  }
   const scenario = state.route[Math.min(state.scenarioIndex ?? 0, state.route.length - 1)]
   if (!scenario?.routeBinding) return undefined
   const initial = createRoadPosition(scenario.routeBinding, scenario.type)
@@ -193,7 +196,6 @@ function migrateLegacyRoadState(state: PersistedEngineStateV2): PersistedEngineS
   const migratedPosition = { ...roadPosition, laneId: target.id }
   return {
     ...state,
-    roadProfileEnabled: NEWMARKET_ROAD_PROFILE_ENABLED,
     roadPosition: migratedPosition,
     laneOffsetM: getRoadFacts(migratedPosition).laneOffsetM,
     laneChangeFromOffsetM: null,

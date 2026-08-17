@@ -12,7 +12,7 @@ async function openFocusedPractice(page: Page, title: string, query: string) {
 }
 
 async function captureRoadKeyframe(page: Page, testInfo: TestInfo, name: string) {
-  const screenshot = await page.getByTestId('driving-canvas').screenshot()
+  const screenshot = await page.getByTestId('driving-webgl').screenshot()
   expect(screenshot.byteLength).toBeGreaterThan(10_000)
   await testInfo.attach(name, { body: screenshot, contentType: 'image/png' })
 }
@@ -20,7 +20,6 @@ async function captureRoadKeyframe(page: Page, testInfo: TestInfo, name: string)
 test('renders a dynamic left-turn pocket and changes the camera lane', async ({ page }, testInfo) => {
   await openFocusedPractice(page, 'Multi-lane left turn', '?debug=1&timeScale=1&startDistance=170&seed=101')
   const world = page.getByTestId('road-world')
-  const canvas = page.getByTestId('driving-canvas')
   await expect(world).toHaveAttribute('data-road-section', 'left-turn-pocket')
   await expect(world).toHaveAttribute('data-lane-id', 'pocket-through')
   await captureRoadKeyframe(page, testInfo, 'left-turn-pocket-before')
@@ -29,7 +28,7 @@ test('renders a dynamic left-turn pocket and changes the camera lane', async ({ 
   await page.keyboard.press('a')
   await expect.poll(async () => world.getAttribute('data-lane-id')).toBe('pocket-left-turn')
   await expect.poll(async () => Number(await world.getAttribute('data-camera-x'))).toBeLessThan(before - 0.5)
-  await expect(canvas).toHaveAttribute('data-steering-angle', '0.0')
+  await expect(world).toHaveAttribute('data-steering-angle', '0.0')
   await captureRoadKeyframe(page, testInfo, 'left-turn-pocket-after')
 })
 
@@ -48,7 +47,7 @@ test('keeps a continuous road visible while crossing a section boundary', async 
   const world = page.getByTestId('road-world')
   await expect(world).toHaveAttribute('data-road-section', 'harry-walker-local')
   await expect.poll(async () => Number(await world.getAttribute('data-road-ahead-m'))).toBeGreaterThanOrEqual(312)
-  await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'true')
+  await expect(world).toHaveAttribute('data-traffic-light-visible', 'true')
   await expect(page.getByText('Two-way · 1 your direction + 1 opposing')).toBeVisible()
   await captureRoadKeyframe(page, testInfo, 'local-to-signal-continuous-road')
 })
@@ -56,12 +55,12 @@ test('keeps a continuous road visible while crossing a section boundary', async 
 test('renders local, signal, ramp and exit sections as distinct keyframes', async ({ page }, testInfo) => {
   await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=260&seed=102')
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'harry-walker-local')
-  await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'false')
+  await expect(page.getByTestId('road-world')).toHaveAttribute('data-traffic-light-visible', 'false')
   await captureRoadKeyframe(page, testInfo, 'local-two-way')
 
   await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=805&seed=103')
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'urban-signal-junction')
-  await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'true')
+  await expect(page.getByTestId('road-world')).toHaveAttribute('data-traffic-light-visible', 'true')
   await captureRoadKeyframe(page, testInfo, 'signal-intersection')
 
   await openFocusedPractice(page, 'Freeway merge', '?debug=1&timeScale=1&startDistance=720&seed=104')
@@ -80,7 +79,7 @@ test.describe('mobile landscape road profile', () => {
     await openFocusedPractice(page, 'Multi-lane left turn', '?debug=1&timeScale=1&startDistance=315&seed=106')
     const world = page.getByTestId('road-world')
     await expect(world).toHaveAttribute('data-road-section', 'left-turn-pocket')
-    await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'true')
+    await expect(world).toHaveAttribute('data-traffic-light-visible', 'true')
     await expect(page.getByRole('button', { name: /Move one lane left/ })).toBeVisible()
     await captureRoadKeyframe(page, testInfo, 'mobile-left-turn-pocket')
   })

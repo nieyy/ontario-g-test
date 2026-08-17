@@ -1,23 +1,27 @@
 {
   "name": "ontario-g-test",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "validate:content": "tsx scripts/validate-content.ts",
+    "validate:3d-assets": "tsx scripts/validate-3d-assets.ts",
+    "check:render-budget": "tsx scripts/check-render-budget.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "VITE_NEWMARKET_ROAD_PROFILE_ENABLED=true npm run build && VITE_NEWMARKET_ROAD_PROFILE_ENABLED=true playwright test",
+    "test:e2e": "npm run build && playwright test",
     "preview": "vite preview",
-    "check": "npm run lint && npm run validate:content && npm run test && npm run build",
-    "check:release": "VITE_NEWMARKET_ROAD_PROFILE_ENABLED=true npm run check && VITE_NEWMARKET_ROAD_PROFILE_ENABLED=true playwright test"
+    "check": "npm run lint && npm run validate:content && npm run validate:3d-assets && npm run test && npm run build && npm run check:render-budget",
+    "check:release": "npm run check && playwright test"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.7.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
@@ -28,6 +32,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^6.0.5",
     "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",

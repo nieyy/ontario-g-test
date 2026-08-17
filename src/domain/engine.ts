@@ -1,7 +1,6 @@
 import { newmarketCentre, scenarioOrder } from '../content/data'
 import { newmarketRoadProfile } from '../content/roadProfiles/newmarket'
 import type { RoadPosition } from '../content/roadProfiles/types'
-import { NEWMARKET_ROAD_PROFILE_ENABLED } from '../config/featureFlags'
 import type {
   ActionType,
   AttemptRecordV2,
@@ -44,7 +43,6 @@ export type EngineState = {
   lanePosition: number
   laneChangeFrom: number | null
   laneChangeElapsed: number
-  roadProfileEnabled: boolean
   roadPosition: RoadPosition
   laneOffsetM: number
   laneChangeFromOffsetM: number | null
@@ -133,7 +131,6 @@ export function createEngine(configOrSeed: ResolvedRunConfig | number, legacySta
     lanePosition: 0,
     laneChangeFrom: null,
     laneChangeElapsed: 0,
-    roadProfileEnabled: NEWMARKET_ROAD_PROFILE_ENABLED,
     roadPosition,
     laneOffsetM,
     laneChangeFromOffsetM: null,
@@ -160,11 +157,7 @@ export function canStartTurn(state: EngineState, type: 'turn-left' | 'turn-right
     state.turnDirection
     || state.laneChangeFrom !== null
   ) return false
-  if (state.roadProfileEnabled) return canTurnFromRoad(state.roadPosition, type === 'turn-left' ? 'left' : 'right')
-  if (state.scenarioDistanceMeters < INTERSECTION_DECISION_DISTANCE_METERS || state.scenarioDistanceMeters > INTERSECTION_TURN_EXIT_DISTANCE_METERS) return false
-  const scenario = currentScenario(state)
-  if (type === 'turn-right') return scenario.type === 'right-on-red' && state.lane === 1
-  return scenario.type === 'multilane-left' && state.lane === -1
+  return canTurnFromRoad(state.roadPosition, type === 'turn-left' ? 'left' : 'right')
 }
 
 export function recordAction(state: EngineState, type: ActionType): EngineState {
@@ -183,15 +176,12 @@ export function recordAction(state: EngineState, type: ActionType): EngineState 
   let turnDirection = state.turnDirection
   let turnStartDistanceMeters = state.turnStartDistanceMeters
 
-  if (state.roadProfileEnabled && (type === 'lane-left' || type === 'lane-right')) {
+  if (type === 'lane-left' || type === 'lane-right') {
     const result = requestAdjacentLane(state.roadPosition, type === 'lane-left' ? 'left' : 'right')
     if (!result.accepted) return state
     roadPosition = result.position
     lane = Math.max(-1, Math.min(1, lane + (type === 'lane-left' ? -1 : 1))) as -1 | 0 | 1
     laneChangeFromOffsetM = state.laneOffsetM
-  } else {
-    if (type === 'lane-left') lane = Math.max(-1, lane - 1) as -1 | 0 | 1
-    if (type === 'lane-right') lane = Math.min(1, lane + 1) as -1 | 0 | 1
   }
   const roadLaneChanged = roadPosition.laneId !== state.roadPosition.laneId
   if (type.startsWith('lane-') && lane === state.lane && !roadLaneChanged) return state
@@ -366,9 +356,7 @@ export function advanceEngine(
   const currentDistance = state.scenarioDistanceMeters ?? 0
   const nextDistance = currentDistance + ((state.speedKph + nextSpeed) / 2 / 3.6) * seconds
   const deltaDistance = nextDistance - currentDistance
-  const nextRoadPosition = state.roadProfileEnabled
-    ? advanceRoadPosition(state.roadPosition, deltaDistance, scenario.routeBinding)
-    : state.roadPosition
+  const nextRoadPosition = advanceRoadPosition(state.roadPosition, deltaDistance, scenario.routeBinding)
   const nextTurnProgress = state.turnDirection
     ? Math.min(1, state.turnProgress + seconds / TURN_DURATION_SECONDS)
     : 0
@@ -383,7 +371,7 @@ export function advanceEngine(
     ? state.lanePosition
     : state.laneChangeFrom + (state.lane - state.laneChangeFrom) * easedLaneProgress
   const laneChangeComplete = state.laneChangeFrom !== null && laneChangeProgress >= 1
-  const targetRoadOffset = state.roadProfileEnabled ? getRoadFacts(nextRoadPosition, newmarketRoadProfile).laneOffsetM : state.laneOffsetM
+  const targetRoadOffset = getRoadFacts(nextRoadPosition, newmarketRoadProfile).laneOffsetM
   const nextLaneOffsetM = state.laneChangeFromOffsetM === null
     ? targetRoadOffset
     : state.laneChangeFromOffsetM + (targetRoadOffset - state.laneChangeFromOffsetM) * easedLaneProgress
@@ -490,9 +478,9 @@ export function toAttemptRecord(
     completed: state.completed,
     guidanceSummary,
     migrationSource: 'v2',
-    roadProfileId: state.roadProfileEnabled ? newmarketRoadProfile.id : undefined,
-    routeId: state.roadProfileEnabled ? state.roadPosition.routeId : undefined,
-    sectionIds: state.roadProfileEnabled ? [...new Set(state.route.flatMap((scenario) => scenario.routeBinding.edgeIds.map((edgeId) => getRoadFacts(createRoadPosition({ routeId: scenario.routeBinding.routeId, edgeIds: [edgeId] }, scenario.type)).section.id)))] : undefined,
+    roadProfileId: newmarketRoadProfile.id,
+    routeId: state.roadPosition.routeId,
+    sectionIds: [...new Set(state.route.flatMap((scenario) => scenario.routeBinding.edgeIds.map((edgeId) => getRoadFacts(createRoadPosition({ routeId: scenario.routeBinding.routeId, edgeIds: [edgeId] }, scenario.type)).section.id)))],
   }
 }
 

@@ -29,21 +29,13 @@ function conditionMatches(condition: GuidanceCondition, state: Readonly<EngineSt
     case 'distance-at-least': return state.scenarioDistanceMeters >= condition.metres
     case 'distance-at-most': return state.scenarioDistanceMeters <= condition.metres
     case 'lane-is': return state.lane === condition.lane
-    case 'lane-role-is': return state.roadProfileEnabled
-      ? getRoadFacts(state.roadPosition).laneRole === condition.role
-      : condition.role === 'through'
-        || (condition.role === 'left-turn' && state.lane === -1)
-        || ((condition.role === 'right-turn' || condition.role === 'exit') && state.lane === 1)
-    case 'lane-transition-available': return state.roadProfileEnabled
-      ? getRoadFacts(state.roadPosition).availableLaneActions.some((action) => action.direction === condition.direction)
-      : condition.direction === 'left' ? state.lane > -1 : state.lane < 1
+    case 'lane-role-is': return getRoadFacts(state.roadPosition).laneRole === condition.role
+    case 'lane-transition-available': return getRoadFacts(state.roadPosition).availableLaneActions.some((action) => action.direction === condition.direction)
     case 'intersection-distance-band': {
-      const distance = state.roadProfileEnabled
-        ? getRoadFacts(state.roadPosition).intersectionDistanceMeters
-        : 230 - state.scenarioDistanceMeters
+      const distance = getRoadFacts(state.roadPosition).intersectionDistanceMeters
       return distance !== undefined && distance >= condition.minMetres && distance <= condition.maxMetres
     }
-    case 'road-section-kind': return state.roadProfileEnabled && getRoadFacts(state.roadPosition).template === condition.template
+    case 'road-section-kind': return getRoadFacts(state.roadPosition).template === condition.template
     case 'speed-at-most': return state.speedKph <= condition.kph
     case 'speed-at-least': return state.speedKph >= condition.kph
     case 'action-observed': return actions.some((action) => action.type === condition.action)

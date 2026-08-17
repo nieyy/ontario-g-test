@@ -120,8 +120,18 @@ test('approaches the instructed intersection only while the vehicle moves', asyn
   const laterDistance = Number(await roadWorld.getAttribute('data-camera-z'))
 
   expect(laterDistance).toBeGreaterThan(stoppedDistance)
-  await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'true')
+  await expect(roadWorld).toHaveAttribute('data-traffic-light-visible', 'true')
   await expect(page.getByText(/Intersection ahead|Intersection approaching|Decision zone/)).toBeVisible()
+})
+
+test('keeps the production 3D scene within its runtime render budget', async ({ page }) => {
+  await openFocusedPractice(page, 'Freeway merge', '?debug=1&seed=44')
+  const roadWorld = page.getByTestId('road-world')
+  await expect(roadWorld).toHaveAttribute('data-scene-ready', 'true')
+  await expect.poll(async () => Number(await roadWorld.getAttribute('data-draw-calls')), { timeout: 5_000 }).toBeGreaterThan(0)
+  expect(Number(await roadWorld.getAttribute('data-draw-calls'))).toBeLessThanOrEqual(180)
+  expect(Number(await roadWorld.getAttribute('data-triangles'))).toBeLessThanOrEqual(150_000)
+  await expect(roadWorld).toHaveAttribute('data-renderer', 'three')
 })
 
 test('drives across the intersection and leaves it behind', async ({ page }) => {
@@ -133,22 +143,21 @@ test('drives across the intersection and leaves it behind', async ({ page }) => 
   await page.keyboard.down('ArrowUp')
   await expect.poll(async () => roadWorld.getAttribute('data-intersection-phase'), { timeout: 6_000 }).toBe('passed')
   await page.keyboard.up('ArrowUp')
-  await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-traffic-light-visible', 'false')
+  await expect(roadWorld).toHaveAttribute('data-traffic-light-visible', 'false')
   await expect(page.getByText('Intersection is passing under the car')).toBeHidden()
 })
 
 test('moves into a real left-turn pocket and turns with the same steering keys', async ({ page }) => {
   await openFocusedPractice(page, 'Multi-lane left turn', '?debug=1&timeScale=1&startDistance=320&seed=47')
   const roadWorld = page.getByTestId('road-world')
-  const canvas = page.getByTestId('driving-canvas')
 
   await expect(roadWorld).toHaveAttribute('data-road-section', 'left-turn-pocket')
   await expect(roadWorld).toHaveAttribute('data-lane-id', 'pocket-through')
   await page.keyboard.press('ArrowLeft')
   await expect(page.getByRole('status')).toHaveText(/Changing one lane left/)
   await expect.poll(async () => roadWorld.getAttribute('data-lane-id')).toBe('pocket-left-turn')
-  await expect.poll(async () => Number(await canvas.getAttribute('data-lane-offset'))).toBeLessThan(-0.5)
-  await expect(canvas).toHaveAttribute('data-steering-angle', '0.0')
+  await expect.poll(async () => Number(await roadWorld.getAttribute('data-lane-offset'))).toBeLessThan(-0.5)
+  await expect(roadWorld).toHaveAttribute('data-steering-angle', '0.0')
 
   await expect(page.getByRole('button', { name: 'Turn left at the intersection' })).toBeVisible({ timeout: 8_000 })
   await page.keyboard.press('ArrowLeft')
@@ -184,12 +193,12 @@ test.describe('mobile controls', () => {
     await page.getByRole('button', { name: /Move one lane right/ }).click()
     await expect(page.getByRole('status')).toHaveText(/Changing one lane right/)
     await expect.poll(async () => page.getByTestId('road-world').getAttribute('data-lane-id')).toBe('signal-right-turn')
-    await expect.poll(async () => Number(await page.getByTestId('driving-canvas').getAttribute('data-lane-offset'))).toBeGreaterThan(0)
-    await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-steering-angle', '0.0')
+    await expect.poll(async () => Number(await page.getByTestId('road-world').getAttribute('data-lane-offset'))).toBeGreaterThan(0)
+    await expect(page.getByTestId('road-world')).toHaveAttribute('data-steering-angle', '0.0')
     await page.getByRole('button', { name: /Move one lane left/ }).click()
     await expect(page.getByRole('status')).toHaveText(/Changing one lane left/)
     await expect.poll(async () => page.getByTestId('road-world').getAttribute('data-lane-id')).toBe('signal-through')
-    await expect(page.getByTestId('driving-canvas')).toHaveAttribute('data-steering-angle', '0.0')
+    await expect(page.getByTestId('road-world')).toHaveAttribute('data-steering-angle', '0.0')
   })
 })
 
@@ -208,4 +217,32 @@ test('supports nearby primary signal keys and legacy aliases', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Left signal' })).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('.')
   await expect(page.getByRole('button', { name: 'Right signal' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('blocks the attempt with an actionable message when WebGL 2 is unavailable', async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function (type: string, options?: unknown) {
+      if (type === 'webgl2') return null
+      return original.call(this, type, options as never)
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
+  await page.goto('?seed=73')
+  await page.getByRole('button', { name: 'Choose a test centre' }).click()
+  await page.getByRole('button', { name: 'Select Newmarket' }).click()
+  await page.getByRole('button', { name: 'Choose Exam mode' }).click()
+  await page.getByRole('button', { name: 'Start when ready' }).click()
+  await expect(page.getByRole('alert')).toContainText('3D driving view is unavailable')
+  await expect(page.getByRole('button', { name: 'Retry 3D check' })).toBeVisible()
+  await expect(page.getByTestId('road-world')).toHaveAttribute('data-scene-ready', 'false')
+})
+
+test('pauses and reports a lost WebGL context without changing renderer identity', async ({ page }) => {
+  await openFocusedPractice(page, 'Yellow-light decision', '?debug=1&seed=79')
+  const world = page.getByTestId('road-world')
+  await expect(world).toHaveAttribute('data-scene-ready', 'true')
+  await page.getByTestId('driving-webgl').evaluate((canvas) => canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true })))
+  await expect(page.getByText('3D context paused')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Take a moment.' })).toBeVisible()
+  await expect(world).toHaveAttribute('data-renderer', 'three')
 })
