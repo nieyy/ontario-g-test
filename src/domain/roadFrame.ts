@@ -16,6 +16,7 @@ export type RenderLaneSlice = {
 }
 
 export type RenderRoadSlice = {
+  edgeId: string
   sM: number
   routeDistanceM: number
   centre: WorldPoint
@@ -112,6 +113,7 @@ function sectionSlice(placement: Placement, sM: number): RenderRoadSlice {
     return [{ offset: offset - rendered.widthM / 2, point: rendered.leftEdge }, { offset: offset + rendered.widthM / 2, point: rendered.rightEdge }]
   }).sort((left, right) => left.offset - right.offset)
   return {
+    edgeId: placement.edgeId,
     sM,
     routeDistanceM: placement.routeStartM + sM,
     centre,

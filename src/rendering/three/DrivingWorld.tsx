@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { RenderSnapshot, TrafficActor } from '../../domain/renderSnapshot'
 import type { RenderRoadSlice } from '../../domain/roadFrame'
+import { buildEnvironmentDecorations } from './EnvironmentDecorations'
 import { ribbonGeometry, stripGeometry } from './RoadGeometry'
 import type { SceneQualityConfig } from './SceneQuality'
 
@@ -142,27 +143,12 @@ function IndustrialBuilding({ x, z, colour }: { x: number; z: number; colour: st
 }
 
 function Environment({ snapshot, quality }: { snapshot: RenderSnapshot; quality: SceneQualityConfig }) {
-  const decorations = useMemo(() => {
-    const buckets = new Map<number, RenderRoadSlice>()
-    for (const slice of snapshot.road.slices) {
-      const bucket = Math.floor(slice.routeDistanceM / 30)
-      const current = buckets.get(bucket)
-      const centreM = bucket * 30 + 15
-      if (!current || Math.abs(slice.routeDistanceM - centreM) < Math.abs(current.routeDistanceM - centreM)) buckets.set(bucket, slice)
-    }
-    const limit = quality.level === 'low' ? 9 : 16
-    return [...buckets.entries()].slice(0, limit).map(([bucket, slice]) => {
-      const side = bucket % 2 ? 1 : -1
-      const edge = side > 0 ? slice.rightEdge : slice.leftEdge
-      const distance = bucket % 3 === 0 ? 14 : 9
-      return { id: bucket, x: edge.x + Math.cos(slice.heading) * side * distance, z: edge.z - Math.sin(slice.heading) * side * distance, side }
-    })
-  }, [snapshot.road.slices, quality.level])
+  const decorations = useMemo(() => buildEnvironmentDecorations(snapshot.road.slices, quality.level), [snapshot.road.slices, quality.level])
   return <group>
     <mesh position={[0, -0.12, 0]} receiveShadow><boxGeometry args={[4000, 0.2, 4000]} /><primitive object={grass} attach="material" /></mesh>
-    {decorations.map((item) => item.id % 3 === 0
+    {decorations.map((item) => item.kind === 'building'
       ? <IndustrialBuilding key={item.id} x={item.x} z={item.z} colour={item.side > 0 ? '#b99b79' : '#a7aca8'} />
-      : <LowPolyTree key={item.id} x={item.x} z={item.z} scale={0.8 + (item.id % 4) * 0.12} />)}
+      : <LowPolyTree key={item.id} x={item.x} z={item.z} scale={0.8 + (Math.abs(Math.floor(item.z)) % 4) * 0.12} />)}
   </group>
 }
 
