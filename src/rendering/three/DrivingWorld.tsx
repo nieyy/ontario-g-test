@@ -183,13 +183,13 @@ function Cockpit({ snapshot }: { snapshot: RenderSnapshot }) {
     if (wheel.current) wheel.current.rotation.z = THREE.MathUtils.damp(wheel.current.rotation.z, -THREE.MathUtils.degToRad(snapshot.steeringAngle), 10, delta)
   })
   return <group ref={group}>
-    <mesh position={[0, -0.86, -1.18]} rotation={[-0.08, 0, 0]}><boxGeometry args={[4.8, 0.42, 1.5]} /><meshStandardMaterial color="#172128" roughness={0.85} /></mesh>
-    <group ref={wheel} position={[0, -0.34, -1.08]} rotation={[-0.18, 0, 0]}>
-      <mesh><torusGeometry args={[0.31, 0.047, 10, 32]} /><meshStandardMaterial color="#15191c" roughness={0.75} /></mesh>
-      <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.09, 0.09, 0.06, 16]} /><meshStandardMaterial color="#35434c" /></mesh>
-      <mesh position={[0, 0.14, 0]}><boxGeometry args={[0.045, 0.27, 0.045]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
-      <mesh position={[-0.11, -0.09, 0]} rotation={[0, 0, -0.88]}><boxGeometry args={[0.045, 0.28, 0.045]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
-      <mesh position={[0.11, -0.09, 0]} rotation={[0, 0, 0.88]}><boxGeometry args={[0.045, 0.28, 0.045]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
+    <mesh position={[0, -0.92, -1.5]} rotation={[-0.16, 0, 0]}><boxGeometry args={[4.8, 0.24, 1.1]} /><meshStandardMaterial color="#172128" roughness={0.85} /></mesh>
+    <group ref={wheel} position={[0, -0.73, -1.32]} rotation={[-0.18, 0, 0]}>
+      <mesh><torusGeometry args={[0.22, 0.035, 10, 32]} /><meshStandardMaterial color="#15191c" roughness={0.75} /></mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.065, 0.065, 0.045, 16]} /><meshStandardMaterial color="#35434c" /></mesh>
+      <mesh position={[0, 0.1, 0]}><boxGeometry args={[0.034, 0.19, 0.034]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
+      <mesh position={[-0.08, -0.065, 0]} rotation={[0, 0, -0.88]}><boxGeometry args={[0.034, 0.2, 0.034]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
+      <mesh position={[0.08, -0.065, 0]} rotation={[0, 0, 0.88]}><boxGeometry args={[0.034, 0.2, 0.034]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
     </group>
   </group>
 }
