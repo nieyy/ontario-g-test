@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { RenderSnapshot, TrafficActor } from '../../domain/renderSnapshot'
 import type { RenderRoadSlice } from '../../domain/roadFrame'
+import { ribbonGeometry, stripGeometry } from './RoadGeometry'
 import type { SceneQualityConfig } from './SceneQuality'
 
 const asphalt = new THREE.MeshStandardMaterial({ color: '#353a3e', roughness: 0.96, metalness: 0 })
@@ -16,50 +17,26 @@ function toThree(point: { x: number; z: number }, y = 0): [number, number, numbe
   return [point.x, y, -point.z]
 }
 
-function ribbonGeometry(slices: RenderRoadSlice[]) {
-  const positions: number[] = []
-  const indices: number[] = []
-  for (const slice of slices) positions.push(...toThree(slice.leftEdge), ...toThree(slice.rightEdge))
-  for (let index = 0; index < slices.length - 1; index += 1) {
-    const offset = index * 2
-    indices.push(offset, offset + 2, offset + 1, offset + 1, offset + 2, offset + 3)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setIndex(indices)
-  geometry.computeVertexNormals()
-  return geometry
-}
-
-function stripGeometry(points: Array<{ x: number; z: number }>, width: number, y = 0.025) {
-  const positions: number[] = []
-  const indices: number[] = []
-  points.forEach((point, index) => {
-    const previous = points[Math.max(0, index - 1)]
-    const next = points[Math.min(points.length - 1, index + 1)]
-    const dx = next.x - previous.x
-    const dz = next.z - previous.z
-    const length = Math.hypot(dx, dz) || 1
-    const nx = dz / length
-    const nz = -dx / length
-    positions.push(...toThree({ x: point.x - nx * width / 2, z: point.z - nz * width / 2 }, y))
-    positions.push(...toThree({ x: point.x + nx * width / 2, z: point.z + nz * width / 2 }, y))
-  })
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const offset = index * 2
-    indices.push(offset, offset + 2, offset + 1, offset + 1, offset + 2, offset + 3)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setIndex(indices)
-  geometry.computeVertexNormals()
-  return geometry
-}
-
 function RoadSurface({ slices }: { slices: RenderRoadSlice[] }) {
   const geometry = useMemo(() => ribbonGeometry(slices), [slices])
   useEffect(() => () => geometry.dispose(), [geometry])
   return <mesh geometry={geometry} material={asphalt} receiveShadow />
+}
+
+function Roadside({ slices }: { slices: RenderRoadSlice[] }) {
+  const geometries = useMemo(() => {
+    const left = stripGeometry(slices.map((slice) => slice.leftEdge), 1.4, 0.018)
+    const right = stripGeometry(slices.map((slice) => slice.rightEdge), 1.4, 0.018)
+    return { left, right }
+  }, [slices])
+  useEffect(() => () => {
+    geometries.left.dispose()
+    geometries.right.dispose()
+  }, [geometries])
+  return <>
+    <mesh geometry={geometries.left} material={concrete} receiveShadow />
+    <mesh geometry={geometries.right} material={concrete} receiveShadow />
+  </>
 }
 
 function RoadMarkings({ slices }: { slices: RenderRoadSlice[] }) {
@@ -165,13 +142,24 @@ function IndustrialBuilding({ x, z, colour }: { x: number; z: number; colour: st
 }
 
 function Environment({ snapshot, quality }: { snapshot: RenderSnapshot; quality: SceneQualityConfig }) {
-  const camera = snapshot.camera
-  const decorations = useMemo(() => Array.from({ length: quality.level === 'low' ? 8 : 14 }, (_, index) => {
-    const side = index % 2 ? 1 : -1
-    return { id: index, x: camera.x + side * (18 + (index % 3) * 5), z: camera.z + 25 + index * 24, side }
-  }), [camera.x, camera.z, quality.level])
+  const decorations = useMemo(() => {
+    const buckets = new Map<number, RenderRoadSlice>()
+    for (const slice of snapshot.road.slices) {
+      const bucket = Math.floor(slice.routeDistanceM / 30)
+      const current = buckets.get(bucket)
+      const centreM = bucket * 30 + 15
+      if (!current || Math.abs(slice.routeDistanceM - centreM) < Math.abs(current.routeDistanceM - centreM)) buckets.set(bucket, slice)
+    }
+    const limit = quality.level === 'low' ? 9 : 16
+    return [...buckets.entries()].slice(0, limit).map(([bucket, slice]) => {
+      const side = bucket % 2 ? 1 : -1
+      const edge = side > 0 ? slice.rightEdge : slice.leftEdge
+      const distance = bucket % 3 === 0 ? 14 : 9
+      return { id: bucket, x: edge.x + Math.cos(slice.heading) * side * distance, z: edge.z - Math.sin(slice.heading) * side * distance, side }
+    })
+  }, [snapshot.road.slices, quality.level])
   return <group>
-    <mesh position={[camera.x, -0.12, -camera.z - 110]} receiveShadow><boxGeometry args={[240, 0.2, 480]} /><primitive object={grass} attach="material" /></mesh>
+    <mesh position={[0, -0.12, 0]} receiveShadow><boxGeometry args={[4000, 0.2, 4000]} /><primitive object={grass} attach="material" /></mesh>
     {decorations.map((item) => item.id % 3 === 0
       ? <IndustrialBuilding key={item.id} x={item.x} z={item.z} colour={item.side > 0 ? '#b99b79' : '#a7aca8'} />
       : <LowPolyTree key={item.id} x={item.x} z={item.z} scale={0.8 + (item.id % 4) * 0.12} />)}
@@ -179,10 +167,19 @@ function Environment({ snapshot, quality }: { snapshot: RenderSnapshot; quality:
 }
 
 function Car({ actor, snapshot }: { actor: TrafficActor; snapshot: RenderSnapshot }) {
+  const group = useRef<THREE.Group>(null)
   const heading = snapshot.camera.heading + actor.heading
   const x = snapshot.camera.x + Math.cos(snapshot.camera.heading) * actor.lateralM + Math.sin(snapshot.camera.heading) * actor.forwardM
   const z = snapshot.camera.z - Math.sin(snapshot.camera.heading) * actor.lateralM + Math.cos(snapshot.camera.heading) * actor.forwardM
-  return <group position={toThree({ x, z }, 0.5)} rotation={[0, -heading, 0]}>
+  const targetPosition = useMemo(() => new THREE.Vector3(...toThree({ x, z }, 0.5)), [x, z])
+  const targetQuaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -heading, 0)), [heading])
+  useFrame((_, delta) => {
+    if (!group.current) return
+    const amount = 1 - Math.exp(-delta * 7)
+    group.current.position.lerp(targetPosition, amount)
+    group.current.quaternion.slerp(targetQuaternion, amount)
+  })
+  return <group ref={group} position={targetPosition} quaternion={targetQuaternion}>
     <mesh castShadow><boxGeometry args={[1.75, 0.7, 3.9]} /><meshStandardMaterial color={actor.colour} roughness={0.55} metalness={0.1} /></mesh>
     <mesh position={[0, 0.55, -0.25]} castShadow><boxGeometry args={[1.5, 0.65, 1.9]} /><meshStandardMaterial color="#66818e" roughness={0.2} metalness={0.15} /></mesh>
     {[-0.9, 0.9].flatMap((zWheel) => [-0.78, 0.78].map((xWheel) => <mesh key={`${xWheel}-${zWheel}`} position={[xWheel, -0.28, zWheel]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.34, 0.34, 0.2, 12]} /><meshStandardMaterial color="#171a1c" /></mesh>))}
@@ -191,23 +188,29 @@ function Car({ actor, snapshot }: { actor: TrafficActor; snapshot: RenderSnapsho
 
 function Cockpit({ snapshot }: { snapshot: RenderSnapshot }) {
   const group = useRef<THREE.Group>(null)
-  useFrame(() => {
+  const wheel = useRef<THREE.Group>(null)
+  const { camera } = useThree()
+  useFrame((_, delta) => {
     if (!group.current) return
-    group.current.position.set(snapshot.camera.x, 1.25, -snapshot.camera.z)
-    group.current.rotation.y = -snapshot.camera.heading
+    group.current.position.copy(camera.position)
+    group.current.quaternion.copy(camera.quaternion)
+    if (wheel.current) wheel.current.rotation.z = THREE.MathUtils.damp(wheel.current.rotation.z, -THREE.MathUtils.degToRad(snapshot.steeringAngle), 10, delta)
   })
   return <group ref={group}>
-    <mesh position={[0, -0.68, -0.95]} rotation={[-0.08, 0, 0]}><boxGeometry args={[4.8, 0.52, 1.7]} /><meshStandardMaterial color="#172128" roughness={0.85} /></mesh>
-    <group position={[0, -0.42, -0.75]} rotation={[Math.PI / 2.1, 0, -THREE.MathUtils.degToRad(snapshot.steeringAngle)]}>
-      <mesh><torusGeometry args={[0.43, 0.065, 10, 32]} /><meshStandardMaterial color="#15191c" roughness={0.75} /></mesh>
-      <mesh><cylinderGeometry args={[0.12, 0.12, 0.08, 16]} /><meshStandardMaterial color="#35434c" /></mesh>
+    <mesh position={[0, -0.86, -1.18]} rotation={[-0.08, 0, 0]}><boxGeometry args={[4.8, 0.42, 1.5]} /><meshStandardMaterial color="#172128" roughness={0.85} /></mesh>
+    <group ref={wheel} position={[0, -0.34, -1.08]} rotation={[-0.18, 0, 0]}>
+      <mesh><torusGeometry args={[0.31, 0.047, 10, 32]} /><meshStandardMaterial color="#15191c" roughness={0.75} /></mesh>
+      <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.09, 0.09, 0.06, 16]} /><meshStandardMaterial color="#35434c" /></mesh>
+      <mesh position={[0, 0.14, 0]}><boxGeometry args={[0.045, 0.27, 0.045]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
+      <mesh position={[-0.11, -0.09, 0]} rotation={[0, 0, -0.88]}><boxGeometry args={[0.045, 0.28, 0.045]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
+      <mesh position={[0.11, -0.09, 0]} rotation={[0, 0, 0.88]}><boxGeometry args={[0.045, 0.28, 0.045]} /><meshStandardMaterial color="#2c3941" roughness={0.78} /></mesh>
     </group>
   </group>
 }
 
 function DrivingCamera({ snapshot }: { snapshot: RenderSnapshot }) {
   const { camera } = useThree()
-  const targetPosition = useMemo(() => new THREE.Vector3(snapshot.camera.x, 1.25, -snapshot.camera.z), [snapshot.camera.x, snapshot.camera.z])
+  const targetPosition = useMemo(() => new THREE.Vector3(snapshot.camera.x, 1.62, -snapshot.camera.z), [snapshot.camera.x, snapshot.camera.z])
   const targetQuaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -snapshot.camera.heading, 0)), [snapshot.camera.heading])
   useFrame((_, delta) => {
     const amount = Math.min(1, delta * 8)
@@ -228,6 +231,7 @@ export function DrivingWorld({ snapshot, quality, onMetrics }: { snapshot: Rende
     <hemisphereLight args={['#bfe4ff', '#647653', 0.7]} />
     <DrivingCamera snapshot={snapshot} />
     <Environment snapshot={snapshot} quality={quality} />
+    <Roadside slices={snapshot.road.slices} />
     <RoadSurface slices={snapshot.road.slices} />
     <RoadMarkings slices={snapshot.road.slices} />
     <CrossRoad snapshot={snapshot} />

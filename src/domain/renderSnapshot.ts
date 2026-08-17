@@ -24,12 +24,12 @@ export type RenderSnapshot = {
   recentAction: ActionType | null
 }
 
-function trafficActors(scenario: ScenarioVariant, elapsed: number): TrafficActor[] {
+function trafficActors(scenario: ScenarioVariant, elapsed: number, intersectionDistanceM?: number): TrafficActor[] {
   const actors: TrafficActor[] = [{ id: 'rear-1', role: 'rear', lateralM: 0, forwardM: -18 - (elapsed % 4), heading: 0, colour: '#426a84' }]
   if (scenario.type === 'slow-lead') actors.push({ id: 'lead-1', role: 'lead', lateralM: 0, forwardM: 38, heading: 0, colour: '#c65b48' })
   if (scenario.type === 'freeway-merge') actors.push({ id: 'merge-1', role: 'lead', lateralM: -3.6, forwardM: 52 - (elapsed % 12), heading: 0, colour: '#d9d9d5' })
   if (scenario.type === 'multilane-left') actors.push({ id: 'opposing-1', role: 'opposing', lateralM: -3.6, forwardM: 85 - (elapsed * 7) % 70, heading: Math.PI, colour: '#496b9c' })
-  if (scenario.type === 'right-on-red' || scenario.type === 'yellow-light') actors.push({ id: 'cross-1', role: 'cross', lateralM: -32 + (elapsed * 6) % 64, forwardM: 0, heading: Math.PI / 2, colour: '#b1b7bb' })
+  if (scenario.type === 'right-on-red' || scenario.type === 'yellow-light') actors.push({ id: 'cross-1', role: 'cross', lateralM: -32 + (elapsed * 6) % 64, forwardM: Math.max(14, intersectionDistanceM ?? 80), heading: Math.PI / 2, colour: '#b1b7bb' })
   return actors
 }
 
@@ -51,7 +51,7 @@ export function buildRenderSnapshot(input: { engine: EngineState; scenario: Scen
     intersectionPhase,
     trafficLightVisible: road.intersection?.control === 'traffic-signal' && intersectionPhase !== 'passed',
     trafficLight: input.scenario.trafficLight ?? (road.intersection?.control === 'traffic-signal' ? 'red' : null),
-    actors: trafficActors(input.scenario, input.engine.scenarioElapsed),
+    actors: trafficActors(input.scenario, input.engine.scenarioElapsed, distance),
     road,
     recentAction: input.recentAction ?? null,
   }

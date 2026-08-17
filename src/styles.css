@@ -92,7 +92,7 @@ kbd { display: grid; place-items: center; min-height: 36px; border: 1px solid #c
 .road-scene { display: block; width: 100%; height: min(58vh, 540px); }
 .road-world { transform-box: view-box; transform-origin: 0 0; transition: transform .11s linear; }.steering-wheel { transform-box: view-box; transform-origin: 480px 489px; transition: transform .11s linear; }
 
-.three-road-frame { background: #92c9ea; isolation: isolate; }
+.three-road-frame { height: clamp(430px, 56vh, 720px); min-height: 430px; background: #92c9ea; isolation: isolate; }
 .three-road-scene { display: block; width: 100% !important; height: 100% !important; pointer-events: none; }
 .three-road-frame canvas { display: block; }
 .renderer-status { position: absolute; inset: 0; z-index: 20; display: grid; place-content: center; gap: .65rem; text-align: center; color: #e8f2ef; background: rgba(10,25,31,.82); }
@@ -151,7 +151,7 @@ footer { max-width: 1120px; margin: auto; padding: 28px 24px 45px; border-top: 1
 @media (max-width: 900px) {
   .hero { margin: 10px 14px; padding: 45px 28px; grid-template-columns: 1fr; }.hero-visual { min-height: 330px; }.road-card { width: 320px; }
   .feature-grid { grid-template-columns: 1fr; margin: 20px 20px 70px; }.feature-grid article { padding: 14px; }
-  .drive-layout { min-height: 0; padding: 7px; }.road-scene { height: min(56.25vw, 540px); }.scene-column { min-height: 0; align-content: start; }
+  .drive-layout { min-height: 0; padding: 7px; }.road-scene { height: min(56.25vw, 540px); }.three-road-frame { height: min(56.25vw, 540px); min-height: 360px; }.scene-column { min-height: 0; align-content: start; }
   .control-deck { grid-template-columns: 160px minmax(390px, 1fr) 190px; }
   .side-control-group { gap: 5px; }
   .control-tile { min-height: 58px; }
@@ -165,7 +165,7 @@ footer { max-width: 1120px; margin: auto; padding: 28px 24px 45px; border-top: 1
   .page-shell { margin-top: 35px; }.page-shell h1 { font-size: 2.45rem; }
   .briefing-footer { align-items: stretch; flex-direction: column; }.briefing-footer > div { display: grid; grid-template-columns: 1fr 1.5fr; }
   .player-header { height: 52px; padding: 0 8px; }.player-header strong { font-size: .72rem; }.brand-mark.small { width: 27px; height: 27px; }.player-status { gap: 6px; font-size: .7rem; }.mode-badge { padding: 4px 6px; font-size: .62rem; }.player-status button { padding: 5px 7px; }.player-status button kbd { display: none; }
-  .drive-layout { min-height: calc(100vh - 56px); padding: 5px; gap: 5px; }.scene-column { border-radius: 10px; }
+  .drive-layout { min-height: calc(100vh - 56px); padding: 5px; gap: 5px; }.three-road-frame { height: min(64vh, 440px); min-height: 300px; }.scene-column { border-radius: 10px; }
   .scenario-grid { grid-template-columns: 1fr; }.full-practice-card { align-items: flex-start; flex-direction: column; }.coach-panel { grid-template-columns: 1fr auto; padding: 8px; }.coach-panel > p { font-size: .7rem; }.coach-action span { display: none; }.coach-steps { max-width: calc(100vw - 28px); }.coach-live { min-width: 0; }.coach-feedback { font-size: .65rem; }.round-actions { flex-direction: column; }.round-actions button { width: 100%; }.round-actions .text-button { margin-left: 0; }
   .mirror { border-width: 4px; }.mirror b { left: -4px; right: -4px; top: -19px; height: 18px; padding-top: 3px; font-size: .43rem; }
   .examiner-card { left: 7px; right: 7px; bottom: 7px; width: auto; min-height: 66px; grid-template-columns: 36px 1fr 28px; gap: 7px; padding: 7px 9px; }.examiner-avatar { width: 34px; height: 34px; }.examiner-card small { font-size: .57rem; }.examiner-card p { font-size: .7rem; }.examiner-card div > span { display: none; }.examiner-card button { height: 28px; }

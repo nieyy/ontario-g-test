@@ -274,7 +274,7 @@ function Player({ preferences, config, onFinish, onRetryScene, onExit, checkpoin
   const [startedAt] = useState(checkpoint?.startedAt ?? new Date().toISOString())
   const [attemptId] = useState(checkpoint?.attemptId ?? `${engine.seed}-${startedAt}`)
   const engineRef = useRef(engine)
-  const lastCheckpointBucket = useRef(Math.floor(engine.elapsed / 10))
+  const lastCheckpointBucket = useRef(Math.floor(engine.elapsed / 10) - 1)
   const finished = useRef(false)
   const scenario = currentScenario(engine)
   const guidancePlan = getGuidancePlan(scenario.id)

@@ -129,6 +129,7 @@ test('keeps the production 3D scene within its runtime render budget', async ({ 
   const roadWorld = page.getByTestId('road-world')
   await expect(roadWorld).toHaveAttribute('data-scene-ready', 'true')
   await expect.poll(async () => Number(await roadWorld.getAttribute('data-draw-calls')), { timeout: 5_000 }).toBeGreaterThan(0)
+  expect((await roadWorld.boundingBox())?.height).toBeGreaterThanOrEqual(360)
   expect(Number(await roadWorld.getAttribute('data-draw-calls'))).toBeLessThanOrEqual(180)
   expect(Number(await roadWorld.getAttribute('data-triangles'))).toBeLessThanOrEqual(150_000)
   await expect(roadWorld).toHaveAttribute('data-renderer', 'three')

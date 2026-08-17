@@ -26,4 +26,14 @@ describe('3D render snapshot', () => {
     const rightFrame = buildRenderSnapshot({ engine: { ...right, laneChangeElapsed: 0.45 }, scenario: right.route[0] })
     expect(rightFrame.steeringAngle).toBeGreaterThan(0)
   })
+
+  it('anchors cross traffic at the upcoming intersection rather than beside the driver', () => {
+    const engine = createEngine(63, 'practice', 'right-on-red')
+    const snapshot = buildRenderSnapshot({ engine, scenario: engine.route[0] })
+    const cross = snapshot.actors.find((actor) => actor.role === 'cross')
+
+    expect(cross).toBeDefined()
+    expect(cross!.forwardM).toBeGreaterThan(10)
+    if (snapshot.road.intersection) expect(cross!.forwardM).toBeCloseTo(snapshot.road.intersection.distanceAheadM)
+  })
 })
