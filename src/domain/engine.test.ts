@@ -84,6 +84,15 @@ describe('deterministic engine', () => {
     expect(state.completed).toBe(true)
   })
 
+  it('starts focused freeway merge practice on the entrance ramp rather than an urban arterial', () => {
+    const state = createEngine(23, 'practice', 'freeway-merge')
+    expect(state.roadPosition).toMatchObject({
+      edgeId: 'edge-ramp',
+      sectionId: 'highway-404-on-ramp',
+      laneId: 'ramp-merge',
+    })
+  })
+
   it('keeps RoadPosition, lane animation and steering direction aligned', () => {
     let state = createEngine(31, 'practice', 'multilane-left')
     state = { ...state, roadPosition: { ...state.roadPosition, sMeters: 160 } }

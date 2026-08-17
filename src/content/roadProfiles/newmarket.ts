@@ -259,7 +259,7 @@ const movements: RouteMovement[] = [
 export const newmarketRoadProfile: CentreRoadProfile = {
   id: 'newmarket-road-profile-v1',
   centreId: 'newmarket',
-  version: '1.1.0',
+  version: '1.1.1',
   displayName: 'Newmarket-inspired teaching corridor',
   disclaimer: 'Teaching approximation · not an official, recorded, guaranteed or predicted DriveTest route.',
   sourceNotices: [
@@ -277,14 +277,14 @@ export const newmarketRoadProfile: CentreRoadProfile = {
     movements,
     traversalEdgeIds: edges.map((edge) => edge.id),
   }],
-  contentHash: 'newmarket-road-profile-v1.1-authored-20260817',
+  contentHash: 'newmarket-road-profile-v1.1.1-authored-20260817',
 }
 
 export const newmarketRouteBindings = {
   'right-on-red': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-parking', 'edge-local', 'edge-signal'], decisionEdgeId: 'edge-signal' },
   'yellow-light': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-signal'], decisionEdgeId: 'edge-signal' },
   'multilane-left': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-pocket'], decisionEdgeId: 'edge-pocket' },
-  'freeway-merge': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-arterial', 'edge-ramp'], decisionEdgeId: 'edge-ramp' },
+  'freeway-merge': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-ramp', 'edge-mainline'], decisionEdgeId: 'edge-ramp' },
   'slow-lead': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-mainline'] },
   'freeway-exit': { routeId: 'newmarket-teaching-loop-v1', edgeIds: ['edge-exit'], decisionEdgeId: 'edge-exit' },
 } as const

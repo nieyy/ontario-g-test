@@ -63,8 +63,10 @@ test('renders local, signal, ramp and exit sections as distinct keyframes', asyn
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-traffic-light-visible', 'true')
   await captureRoadKeyframe(page, testInfo, 'signal-intersection')
 
-  await openFocusedPractice(page, 'Freeway merge', '?debug=1&timeScale=1&startDistance=720&seed=104')
+  await openFocusedPractice(page, 'Freeway merge', '?debug=1&timeScale=1&startDistance=120&seed=104')
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'highway-404-on-ramp')
+  await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-template', 'freeway-on-ramp')
+  await expect(page.getByText('2 lanes · one direction')).toBeVisible()
   await captureRoadKeyframe(page, testInfo, 'curved-on-ramp')
 
   await openFocusedPractice(page, 'Freeway exit', '?debug=1&timeScale=1&startDistance=260&seed=105')

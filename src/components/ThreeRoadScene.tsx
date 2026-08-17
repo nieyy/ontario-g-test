@@ -69,7 +69,7 @@ export function ThreeRoadScene({ engine, scenario, recentAction, reducedMotion, 
     setLastMetricAt(now)
     setMetrics(next)
   }
-  return <div className="road-frame three-road-frame" data-testid="road-world" data-renderer="three" data-scene-ready={String(ready)} data-quality={quality.level} data-road-section={engine.roadPosition.sectionId} data-lane-id={engine.roadPosition.laneId} data-lane-offset={engine.laneOffsetM.toFixed(2)} data-camera-x={snapshot.camera.x.toFixed(2)} data-camera-z={snapshot.camera.z.toFixed(2)} data-camera-heading={snapshot.camera.heading.toFixed(3)} data-road-ahead-m={snapshot.road.slices.at(-1)?.routeDistanceM.toFixed(1)} data-steering-angle={snapshot.steeringAngle.toFixed(1)} data-intersection-phase={snapshot.intersectionPhase} data-traffic-light-visible={String(snapshot.trafficLightVisible)} data-draw-calls={metrics.calls} data-triangles={metrics.triangles} data-mirror-draw-calls="0">
+  return <div className="road-frame three-road-frame" data-testid="road-world" data-renderer="three" data-scene-ready={String(ready)} data-quality={quality.level} data-road-section={engine.roadPosition.sectionId} data-road-template={facts.template} data-lane-id={engine.roadPosition.laneId} data-lane-offset={engine.laneOffsetM.toFixed(2)} data-camera-x={snapshot.camera.x.toFixed(2)} data-camera-z={snapshot.camera.z.toFixed(2)} data-camera-heading={snapshot.camera.heading.toFixed(3)} data-road-ahead-m={snapshot.road.slices.at(-1)?.routeDistanceM.toFixed(1)} data-steering-angle={snapshot.steeringAngle.toFixed(1)} data-intersection-phase={snapshot.intersectionPhase} data-traffic-light-visible={String(snapshot.trafficLightVisible)} data-draw-calls={metrics.calls} data-triangles={metrics.triangles} data-mirror-draw-calls="0">
     <Canvas key={rendererKey} className="road-scene three-road-scene" data-testid="driving-webgl-container" role="img" aria-label={`Low-poly 3D ${scenario.environment} driving scene. ${snapshot.road.roadSummary} Current speed ${Math.round(engine.speedKph)} kilometres per hour.`} camera={{ fov: window.innerHeight < 500 ? 74 : 68, near: 0.18, far: 440 }} dpr={quality.dpr} shadows={quality.shadows} gl={{ antialias: quality.antialias, powerPreference: 'high-performance' }} onCreated={({ gl }) => {
       const canvas = gl.domElement
       canvas.dataset.testid = 'driving-webgl'
@@ -82,7 +82,7 @@ export function ThreeRoadScene({ engine, scenario, recentAction, reducedMotion, 
       gl.setPixelRatio(quality.dpr)
       setReady(true)
     }}>
-      <DrivingWorld snapshot={snapshot} quality={quality} onMetrics={updateMetrics} />
+      <DrivingWorld snapshot={snapshot} quality={quality} environment={scenario.environment} onMetrics={updateMetrics} />
     </Canvas>
     {!ready && !contextLost && <div className="renderer-status" aria-live="polite">Preparing the 3D driving world…</div>}
     {contextLost && <div className="renderer-status renderer-error" role="alert"><strong>3D context paused</strong><span>Your drive is preserved. Restore graphics or retry.</span><button onClick={retry}>Retry renderer</button></div>}

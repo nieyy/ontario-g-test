@@ -24,19 +24,73 @@ function RoadSurface({ slices }: { slices: RenderRoadSlice[] }) {
   return <mesh geometry={geometry} material={asphalt} receiveShadow />
 }
 
-function Roadside({ slices }: { slices: RenderRoadSlice[] }) {
+function Roadside({ slices, freeway }: { slices: RenderRoadSlice[]; freeway: boolean }) {
   const geometries = useMemo(() => {
-    const left = stripGeometry(slices.map((slice) => slice.leftEdge), 1.4, 0.018)
-    const right = stripGeometry(slices.map((slice) => slice.rightEdge), 1.4, 0.018)
+    const width = freeway ? 2.8 : 1.4
+    const left = stripGeometry(slices.map((slice) => slice.leftEdge), width, 0.018)
+    const right = stripGeometry(slices.map((slice) => slice.rightEdge), width, 0.018)
     return { left, right }
-  }, [slices])
+  }, [slices, freeway])
   useEffect(() => () => {
     geometries.left.dispose()
     geometries.right.dispose()
   }, [geometries])
   return <>
-    <mesh geometry={geometries.left} material={concrete} receiveShadow />
-    <mesh geometry={geometries.right} material={concrete} receiveShadow />
+    <mesh geometry={geometries.left} material={freeway ? asphalt : concrete} receiveShadow />
+    <mesh geometry={geometries.right} material={freeway ? asphalt : concrete} receiveShadow />
+  </>
+}
+
+function FreewayFurniture({ slices }: { slices: RenderRoadSlice[] }) {
+  const rails = useMemo(() => {
+    const points = (side: -1 | 1) => slices.map((slice) => {
+      const edge = side < 0 ? slice.leftEdge : slice.rightEdge
+      return {
+        x: edge.x + Math.cos(slice.heading) * side * 2.35,
+        z: edge.z - Math.sin(slice.heading) * side * 2.35,
+      }
+    })
+    return {
+      left: stripGeometry(points(-1), 0.16, 0.58),
+      right: stripGeometry(points(1), 0.16, 0.58),
+    }
+  }, [slices])
+  useEffect(() => () => {
+    rails.left.dispose()
+    rails.right.dispose()
+  }, [rails])
+  const posts = slices.filter((_, index) => index % 4 === 0).flatMap((slice) => ([-1, 1] as const).map((side) => {
+    const edge = side < 0 ? slice.leftEdge : slice.rightEdge
+    return {
+      id: `${slice.edgeId}-${slice.sM}-${side}`,
+      point: {
+        x: edge.x + Math.cos(slice.heading) * side * 2.35,
+        z: edge.z - Math.sin(slice.heading) * side * 2.35,
+      },
+    }
+  }))
+  const overhead = slices.reduce((closest, slice) => Math.abs(slice.routeDistanceM - 95) < Math.abs(closest.routeDistanceM - 95) ? slice : closest, slices[0])
+  const warning = slices.reduce((closest, slice) => Math.abs(slice.routeDistanceM - 48) < Math.abs(closest.routeDistanceM - 48) ? slice : closest, slices[0])
+  const warningPoint = {
+    x: warning.rightEdge.x + Math.cos(warning.heading) * 4,
+    z: warning.rightEdge.z - Math.sin(warning.heading) * 4,
+  }
+  return <>
+    <mesh geometry={rails.left} material={concrete} />
+    <mesh geometry={rails.right} material={concrete} />
+    {posts.map((post) => <mesh key={post.id} position={toThree(post.point, 0.3)}><cylinderGeometry args={[0.05, 0.06, 0.6, 6]} /><primitive object={concrete} attach="material" /></mesh>)}
+    <group position={toThree(overhead.centre)} rotation={[0, -overhead.heading, 0]}>
+      <mesh position={[-3.7, 2.5, 0]}><cylinderGeometry args={[0.08, 0.11, 5, 8]} /><primitive object={concrete} attach="material" /></mesh>
+      <mesh position={[3.7, 2.5, 0]}><cylinderGeometry args={[0.08, 0.11, 5, 8]} /><primitive object={concrete} attach="material" /></mesh>
+      <mesh position={[0, 4.65, 0]} castShadow><boxGeometry args={[7.6, 1.65, 0.16]} /><meshStandardMaterial color="#17643f" roughness={0.7} /></mesh>
+      <mesh position={[0, 4.65, 0.09]}><boxGeometry args={[6.2, 0.12, 0.03]} /><primitive object={white} attach="material" /></mesh>
+      <mesh position={[-2.25, 4.95, 0.1]}><boxGeometry args={[1.35, 0.18, 0.03]} /><primitive object={white} attach="material" /></mesh>
+      <mesh position={[1.45, 4.35, 0.1]}><boxGeometry args={[2.5, 0.14, 0.03]} /><primitive object={white} attach="material" /></mesh>
+    </group>
+    <group position={toThree(warningPoint)} rotation={[0, -warning.heading, 0]}>
+      <mesh position={[0, 1.05, 0]}><cylinderGeometry args={[0.045, 0.055, 2.1, 6]} /><primitive object={concrete} attach="material" /></mesh>
+      <mesh position={[0, 2.05, 0]} rotation={[0, 0, Math.PI / 4]}><boxGeometry args={[0.72, 0.72, 0.1]} /><meshStandardMaterial color="#f2c94c" roughness={0.8} /></mesh>
+    </group>
   </>
 }
 
@@ -142,11 +196,11 @@ function IndustrialBuilding({ x, z, colour }: { x: number; z: number; colour: st
   </group>
 }
 
-function Environment({ snapshot, quality }: { snapshot: RenderSnapshot; quality: SceneQualityConfig }) {
+function Environment({ snapshot, quality, freeway }: { snapshot: RenderSnapshot; quality: SceneQualityConfig; freeway: boolean }) {
   const decorations = useMemo(() => buildEnvironmentDecorations(snapshot.road.slices, quality.level), [snapshot.road.slices, quality.level])
   return <group>
     <mesh position={[0, -0.12, 0]} receiveShadow><boxGeometry args={[4000, 0.2, 4000]} /><primitive object={grass} attach="material" /></mesh>
-    {decorations.map((item) => item.kind === 'building'
+    {decorations.map((item) => item.kind === 'building' && !freeway
       ? <IndustrialBuilding key={item.id} x={item.x} z={item.z} colour={item.side > 0 ? '#b99b79' : '#a7aca8'} />
       : <LowPolyTree key={item.id} x={item.x} z={item.z} scale={0.8 + (Math.abs(Math.floor(item.z)) % 4) * 0.12} />)}
   </group>
@@ -206,8 +260,9 @@ function DrivingCamera({ snapshot }: { snapshot: RenderSnapshot }) {
   return null
 }
 
-export function DrivingWorld({ snapshot, quality, onMetrics }: { snapshot: RenderSnapshot; quality: SceneQualityConfig; onMetrics: (metrics: { calls: number; triangles: number }) => void }) {
+export function DrivingWorld({ snapshot, quality, environment, onMetrics }: { snapshot: RenderSnapshot; quality: SceneQualityConfig; environment: 'urban' | 'freeway'; onMetrics: (metrics: { calls: number; triangles: number }) => void }) {
   const { gl } = useThree()
+  const freeway = environment === 'freeway'
   useFrame(() => onMetrics({ calls: gl.info.render.calls, triangles: gl.info.render.triangles }))
   return <>
     <color attach="background" args={['#92c9ea']} />
@@ -216,8 +271,9 @@ export function DrivingWorld({ snapshot, quality, onMetrics }: { snapshot: Rende
     <directionalLight position={[45, 70, 30]} intensity={2.2} castShadow={quality.shadows} shadow-mapSize-width={quality.shadows ? 512 : 0} shadow-mapSize-height={quality.shadows ? 512 : 0} />
     <hemisphereLight args={['#bfe4ff', '#647653', 0.7]} />
     <DrivingCamera snapshot={snapshot} />
-    <Environment snapshot={snapshot} quality={quality} />
-    <Roadside slices={snapshot.road.slices} />
+    <Environment snapshot={snapshot} quality={quality} freeway={freeway} />
+    <Roadside slices={snapshot.road.slices} freeway={freeway} />
+    {freeway && <FreewayFurniture slices={snapshot.road.slices} />}
     <RoadSurface slices={snapshot.road.slices} />
     <RoadMarkings slices={snapshot.road.slices} />
     <CrossRoad snapshot={snapshot} />
