@@ -174,20 +174,32 @@ const sections: RoadSectionDefinition[] = [
     lanes: [
       lane({ id: 'ramp-mainline-left', role: 'through', lengthM: 560, startsAtM: 140, offsetM: -3.6, left: 'single-yellow', right: 'dashed-white' }),
       lane({ id: 'ramp-mainline-centre', role: 'through', lengthM: 560, startsAtM: 140, offsetM: 0, left: 'dashed-white', right: 'dashed-white' }),
-      lane({ id: 'ramp-mainline', role: 'through', lengthM: 560, startsAtM: 140, offsetM: 3.6, left: 'dashed-white', right: 'dashed-white' }),
-      lane({
+      {
+        ...lane({ id: 'ramp-mainline', role: 'through', lengthM: 560, startsAtM: 140, offsetM: 3.6, left: 'dashed-white', right: 'solid-white' }),
+        rightBoundary: [
+          { fromM: 140, toM: 320, marking: 'solid-white' },
+          { fromM: 320, toM: 560, marking: 'dashed-white' },
+        ],
+      },
+      {
+        ...lane({
         id: 'ramp-merge', role: 'merge', lengthM: 560, endsAtM: 480,
         offsetProfile: [
-          { sM: 0, centerOffsetM: 10.8 },
-          { sM: 100, centerOffsetM: 10.8 },
-          { sM: 180, centerOffsetM: 9.5 },
-          { sM: 280, centerOffsetM: 8.2 },
-          { sM: 360, centerOffsetM: 7.2 },
+          { sM: 0, centerOffsetM: 14.4 },
+          { sM: 100, centerOffsetM: 14.4 },
+          { sM: 180, centerOffsetM: 12.6 },
+          { sM: 260, centerOffsetM: 9 },
+          { sM: 320, centerOffsetM: 7.2 },
           { sM: 380, centerOffsetM: 7.2 },
           { sM: 480, centerOffsetM: 5.4 },
         ],
-        left: 'dashed-white', right: 'solid-white', movements: ['merge'],
-      }),
+        left: 'solid-white', right: 'solid-white', movements: ['merge'],
+        }),
+        leftBoundary: [
+          { fromM: 0, toM: 320, marking: 'solid-white' },
+          { fromM: 320, toM: 480, marking: 'dashed-white' },
+        ],
+      },
     ],
     transitions: [
       { id: 'mainline-enters-view', atM: 140, taperLengthM: 120, kind: 'split', fromLaneIds: ['ramp-merge'], toLaneIds: ['ramp-merge', 'ramp-mainline-left', 'ramp-mainline-centre', 'ramp-mainline'] },
@@ -279,7 +291,7 @@ const movements: RouteMovement[] = [
 export const newmarketRoadProfile: CentreRoadProfile = {
   id: 'newmarket-road-profile-v1',
   centreId: 'newmarket',
-  version: '1.1.4',
+  version: '1.1.5',
   displayName: 'Newmarket-inspired teaching corridor',
   disclaimer: 'Teaching approximation · not an official, recorded, guaranteed or predicted DriveTest route.',
   sourceNotices: [
@@ -297,7 +309,7 @@ export const newmarketRoadProfile: CentreRoadProfile = {
     movements,
     traversalEdgeIds: edges.map((edge) => edge.id),
   }],
-  contentHash: 'newmarket-road-profile-v1.1.4-authored-20260818',
+  contentHash: 'newmarket-road-profile-v1.1.5-authored-20260818',
 }
 
 export const newmarketRouteBindings = {

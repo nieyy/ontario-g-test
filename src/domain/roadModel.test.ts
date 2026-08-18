@@ -65,7 +65,11 @@ describe('dynamic road model', () => {
     expect(getRoadFacts(start).speedLimitKph).toBe(70)
     expect(getAvailableLaneActions(start)).toEqual([])
 
-    const accelerationLane = { ...start, sMeters: 270 }
+    const separatedRamp = { ...start, sMeters: 270 }
+    expect(getRoadFacts(separatedRamp).forwardLaneCount).toBe(4)
+    expect(getAvailableLaneActions(separatedRamp)).toEqual([])
+
+    const accelerationLane = { ...start, sMeters: 340 }
     expect(getRoadFacts(accelerationLane).forwardLaneCount).toBe(4)
     expect(getAvailableLaneActions(accelerationLane)).toMatchObject([{ direction: 'left', targetLaneId: 'ramp-mainline', targetRole: 'through' }])
   })
@@ -74,7 +78,7 @@ describe('dynamic road model', () => {
     const section = newmarketRoadProfile.sections.find((candidate) => candidate.id === 'highway-404-on-ramp')!
     const mergeLane = section.lanes.find((lane) => lane.id === 'ramp-merge')!
     const freewayRight = section.lanes.find((lane) => lane.id === 'ramp-mainline')!
-    for (const sMeters of [140, 220, 300, 360, 380, 400, 440, 479]) {
+    for (const sMeters of [140, 220, 300, 320, 360, 380, 400, 440, 479]) {
       const mergeLeftEdge = laneOffsetAt(mergeLane, sMeters) - laneEffectiveWidth(section, mergeLane, sMeters) / 2
       const freewayRightEdge = laneOffsetAt(freewayRight, sMeters) + laneEffectiveWidth(section, freewayRight, sMeters) / 2
       expect(mergeLeftEdge, `ramp boundary at ${sMeters}m`).toBeGreaterThanOrEqual(freewayRightEdge - 0.001)

@@ -6,7 +6,7 @@ import type { RenderSnapshot, TrafficActor } from '../../domain/renderSnapshot'
 import type { RenderRoadSlice } from '../../domain/roadFrame'
 import { buildEnvironmentDecorations } from './EnvironmentDecorations'
 import { buildFreewayFurnitureAnchors, buildGuardRailPosts, buildOverheadGantryLayout } from './FreewayFurnitureModel'
-import { ribbonGeometry, stripGeometry } from './RoadGeometry'
+import { laneRibbonGeometry, stripGeometry } from './RoadGeometry'
 import type { SceneQualityConfig } from './SceneQuality'
 
 const asphalt = new THREE.MeshStandardMaterial({ color: '#353a3e', roughness: 0.96, metalness: 0 })
@@ -20,7 +20,7 @@ function toThree(point: { x: number; z: number }, y = 0): [number, number, numbe
 }
 
 function RoadSurface({ slices }: { slices: RenderRoadSlice[] }) {
-  const geometry = useMemo(() => ribbonGeometry(slices), [slices])
+  const geometry = useMemo(() => laneRibbonGeometry(slices), [slices])
   useEffect(() => () => geometry.dispose(), [geometry])
   return <mesh geometry={geometry} material={asphalt} receiveShadow />
 }
@@ -103,27 +103,33 @@ function FreewayFurniture({ slices }: { slices: RenderRoadSlice[] }) {
 function RoadMarkings({ slices }: { slices: RenderRoadSlice[] }) {
   const descriptors = useMemo(() => {
     const results: Array<{ id: string; points: Array<{ x: number; z: number }>; marking: string; width: number }> = []
+    const seen = new Set<string>()
     const laneIds = new Set(slices.flatMap((slice) => slice.lanes.map((lane) => lane.laneId)))
     for (const laneId of laneIds) {
       for (const side of ['left', 'right'] as const) {
-        const samples = slices.flatMap((slice, index) => {
-          const lane = slice.lanes.find((candidate) => candidate.laneId === laneId)
-          if (!lane) return []
-          const marking = side === 'left' ? lane.leftMarking : lane.rightMarking
-          if (marking === 'none') return []
-          if (marking === 'dashed-white' && Math.floor(slice.routeDistanceM / 8) % 2) return []
-          return [{ point: side === 'left' ? lane.leftEdge : lane.rightEdge, marking, index }]
-        })
-        for (const sample of samples) {
-          const next = samples.find((candidate) => candidate.index > sample.index && candidate.marking === sample.marking)
-          if (!next) continue
-          results.push({ id: `${laneId}-${side}-${sample.index}`, points: [sample.point, next.point], marking: sample.marking, width: sample.marking === 'curb' ? 0.24 : 0.11 })
-          if (sample.marking === 'double-yellow') {
+        for (let index = 0; index < slices.length - 1; index += 1) {
+          const currentLane = slices[index].lanes.find((candidate) => candidate.laneId === laneId)
+          const nextLane = slices[index + 1].lanes.find((candidate) => candidate.laneId === laneId)
+          if (!currentLane || !nextLane) continue
+          const marking = side === 'left' ? currentLane.leftMarking : currentLane.rightMarking
+          const nextMarking = side === 'left' ? nextLane.leftMarking : nextLane.rightMarking
+          if (marking === 'none' || marking !== nextMarking) continue
+          if (marking === 'dashed-white' && Math.floor(slices[index].routeDistanceM / 8) % 2) continue
+          const point = side === 'left' ? currentLane.leftEdge : currentLane.rightEdge
+          const nextPoint = side === 'left' ? nextLane.leftEdge : nextLane.rightEdge
+          const endpoints = [point, nextPoint]
+            .map((candidate) => `${candidate.x.toFixed(3)},${candidate.z.toFixed(3)}`)
+            .sort()
+          const key = `${marking}:${endpoints.join('|')}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          results.push({ id: `${laneId}-${side}-${index}`, points: [point, nextPoint], marking, width: marking === 'curb' ? 0.24 : 0.11 })
+          if (marking === 'double-yellow') {
             const shift = 0.22
-            results.push({ id: `${laneId}-${side}-${sample.index}-double`, points: [
-              { x: sample.point.x + shift, z: sample.point.z },
-              { x: next.point.x + shift, z: next.point.z },
-            ], marking: sample.marking, width: 0.1 })
+            results.push({ id: `${laneId}-${side}-${index}-double`, points: [
+              { x: point.x + shift, z: point.z },
+              { x: nextPoint.x + shift, z: nextPoint.z },
+            ], marking, width: 0.1 })
           }
         }
       }

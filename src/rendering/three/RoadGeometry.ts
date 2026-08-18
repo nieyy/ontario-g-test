@@ -18,6 +18,32 @@ export function ribbonGeometry(slices: RenderRoadSlice[]) {
   return geometry
 }
 
+export function laneRibbonGeometry(slices: RenderRoadSlice[]) {
+  const positions: number[] = []
+  const indices: number[] = []
+  const laneIds = new Set(slices.flatMap((slice) => slice.lanes.map((lane) => lane.laneId)))
+  for (const laneId of laneIds) {
+    for (let index = 0; index < slices.length - 1; index += 1) {
+      const current = slices[index].lanes.find((lane) => lane.laneId === laneId)
+      const next = slices[index + 1].lanes.find((lane) => lane.laneId === laneId)
+      if (!current || !next) continue
+      const offset = positions.length / 3
+      positions.push(
+        ...position(current.leftEdge),
+        ...position(current.rightEdge),
+        ...position(next.leftEdge),
+        ...position(next.rightEdge),
+      )
+      indices.push(offset, offset + 1, offset + 2, offset + 1, offset + 3, offset + 2)
+    }
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
+}
+
 export function stripGeometry(points: Array<{ x: number; z: number }>, width: number, y = 0.025) {
   const positions: number[] = []
   const indices: number[] = []

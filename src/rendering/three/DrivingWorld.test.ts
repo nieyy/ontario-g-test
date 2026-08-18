@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildRoadFrame, type RenderRoadSlice } from '../../domain/roadFrame'
 import { buildEnvironmentDecorations } from './EnvironmentDecorations'
 import { buildFreewayFurnitureAnchors, buildGuardRailPosts, buildOverheadGantryLayout } from './FreewayFurnitureModel'
-import { ribbonGeometry, stripGeometry } from './RoadGeometry'
+import { laneRibbonGeometry, ribbonGeometry, stripGeometry } from './RoadGeometry'
 
 const slice = (z: number): RenderRoadSlice => ({
   edgeId: 'test-edge',
@@ -26,6 +26,25 @@ describe('Three.js road geometry', () => {
     expect(roadsideNormal.getY(0)).toBeGreaterThan(0)
     road.dispose()
     roadside.dispose()
+  })
+
+  it('keeps separated ramp and freeway surfaces as independent asphalt ribbons', () => {
+    const withLanes = (z: number): RenderRoadSlice => ({
+      ...slice(z),
+      lanes: [
+        { laneId: 'mainline', role: 'through', direction: 'forward', centre: { x: 0, z }, leftEdge: { x: -1.8, z }, rightEdge: { x: 1.8, z }, widthM: 3.6, leftMarking: 'solid-white', rightMarking: 'solid-white' },
+        { laneId: 'ramp', role: 'merge', direction: 'forward', centre: { x: 9, z }, leftEdge: { x: 7.2, z }, rightEdge: { x: 10.8, z }, widthM: 3.6, leftMarking: 'solid-white', rightMarking: 'solid-white' },
+      ],
+    })
+    const road = laneRibbonGeometry([withLanes(0), withLanes(10)])
+    const index = road.getIndex()!
+
+    expect(index.count).toBe(12)
+    for (let triangle = 0; triangle < index.count; triangle += 3) {
+      const laneVertices = [index.getX(triangle), index.getX(triangle + 1), index.getX(triangle + 2)]
+      expect(laneVertices.every((vertex) => vertex < 4) || laneVertices.every((vertex) => vertex >= 4)).toBe(true)
+    }
+    road.dispose()
   })
 
   it('keeps roadside objects anchored to the road section instead of recycling them relative to the car', () => {

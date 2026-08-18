@@ -85,6 +85,10 @@ test('renders local, signal, ramp and exit sections as distinct keyframes', asyn
   await openFocusedPractice(page, 'Freeway merge', '?debug=1&timeScale=1&startDistance=270&seed=104')
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'highway-404-on-ramp')
   await expect(page.getByText('4 lanes · one direction')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Move one lane left/ })).toBeDisabled()
+  await captureRoadKeyframe(page, testInfo, 'separated-ramp-and-mainline')
+
+  await openFocusedPractice(page, 'Freeway merge', '?debug=1&timeScale=1&startDistance=340&seed=104')
   await expect(page.getByRole('button', { name: /Move one lane left/ })).toBeEnabled()
   await captureRoadKeyframe(page, testInfo, 'acceleration-lane-beside-mainline')
 
