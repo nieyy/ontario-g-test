@@ -31,6 +31,19 @@ export const TAP_ACCELERATION_KPH = 1.5
 export const TAP_BRAKING_KPH = 2.5
 const TURN_DURATION_SECONDS = 1.4
 
+/**
+ * Focused practice starts at the point where the manoeuvre is normally
+ * performed. A full route still starts parked at 0 km/h.
+ */
+export const FOCUSED_SCENARIO_INITIAL_SPEED_KPH: Record<ScenarioType, number> = {
+  'right-on-red': 0,
+  'yellow-light': 40,
+  'multilane-left': 40,
+  'freeway-merge': 45,
+  'slow-lead': 82,
+  'freeway-exit': 80,
+}
+
 export type EngineState = {
   seed: number
   route: ScenarioVariant[]
@@ -119,6 +132,7 @@ export function createEngine(configOrSeed: ResolvedRunConfig | number, legacySta
   const route = buildRoute(config.seed, scenarioScope?.scenarioType, scenarioScope?.variantId)
   const roadPosition = createRoadPosition(route[0].routeBinding, route[0].type)
   const laneOffsetM = getRoadFacts(roadPosition).laneOffsetM
+  const initialSpeedKph = scenarioScope ? FOCUSED_SCENARIO_INITIAL_SPEED_KPH[route[0].type] : 0
   return {
     seed: config.seed,
     route,
@@ -126,7 +140,7 @@ export function createEngine(configOrSeed: ResolvedRunConfig | number, legacySta
     scenarioElapsed: 0,
     scenarioDistanceMeters: 0,
     elapsed: 0,
-    speedKph: 0,
+    speedKph: initialSpeedKph,
     lane: 0,
     lanePosition: 0,
     laneChangeFrom: null,

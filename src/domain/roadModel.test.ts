@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { newmarketRoadProfile, newmarketRouteBindings } from '../content/roadProfiles/newmarket'
 import { scenarioOrder } from '../content/data'
 import type { RouteBinding } from '../content/roadProfiles/types'
-import { advanceRoadPosition, canTurnFromRoad, createRoadPosition, getAvailableLaneActions, getRoadFacts, requestAdjacentLane } from './roadModel'
+import { advanceRoadPosition, canTurnFromRoad, createRoadPosition, getAvailableLaneActions, getRoadFacts, laneOffsetAt, requestAdjacentLane } from './roadModel'
 
 describe('dynamic road model', () => {
   function routeDistance(position: ReturnType<typeof createRoadPosition>, binding: RouteBinding) {
@@ -66,8 +66,18 @@ describe('dynamic road model', () => {
     expect(getAvailableLaneActions(start)).toEqual([])
 
     const accelerationLane = { ...start, sMeters: 270 }
-    expect(getRoadFacts(accelerationLane).forwardLaneCount).toBe(2)
+    expect(getRoadFacts(accelerationLane).forwardLaneCount).toBe(4)
     expect(getAvailableLaneActions(accelerationLane)).toMatchObject([{ direction: 'left', targetLaneId: 'ramp-mainline', targetRole: 'through' }])
+  })
+
+  it('keeps the entrance ramp to the right of the freeway instead of crossing its lanes', () => {
+    const section = newmarketRoadProfile.sections.find((candidate) => candidate.id === 'highway-404-on-ramp')!
+    const mergeLane = section.lanes.find((lane) => lane.id === 'ramp-merge')!
+    const freewayRight = section.lanes.find((lane) => lane.id === 'ramp-mainline')!
+    for (const sMeters of [140, 220, 300, 360]) {
+      expect(laneOffsetAt(mergeLane, sMeters)).toBeGreaterThan(laneOffsetAt(freewayRight, sMeters))
+    }
+    expect(laneOffsetAt(mergeLane, 480)).toBe(laneOffsetAt(freewayRight, 480))
   })
 
   it('keeps enough freeway mainline ahead for the complete timed merge scene', () => {

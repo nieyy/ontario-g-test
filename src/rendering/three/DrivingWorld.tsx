@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { RenderSnapshot, TrafficActor } from '../../domain/renderSnapshot'
 import type { RenderRoadSlice } from '../../domain/roadFrame'
 import { buildEnvironmentDecorations } from './EnvironmentDecorations'
-import { buildFreewayFurnitureAnchors, buildGuardRailPosts } from './FreewayFurnitureModel'
+import { buildFreewayFurnitureAnchors, buildGuardRailPosts, buildOverheadGantryLayout } from './FreewayFurnitureModel'
 import { ribbonGeometry, stripGeometry } from './RoadGeometry'
 import type { SceneQualityConfig } from './SceneQuality'
 
@@ -75,14 +75,18 @@ function FreewayFurniture({ slices }: { slices: RenderRoadSlice[] }) {
     <mesh geometry={rails.left} material={concrete} />
     <mesh geometry={rails.right} material={concrete} />
     {posts.map((post) => <mesh key={post.id} position={toThree(post.point, 0.3)}><cylinderGeometry args={[0.05, 0.06, 0.6, 6]} /><primitive object={concrete} attach="material" /></mesh>)}
-    {anchors.filter((anchor) => anchor.kind === 'overhead').map(({ id, slice: overhead }) => <group key={id} position={toThree(overhead.centre)} rotation={[0, -overhead.heading, 0]}>
-      <mesh position={[-3.7, 2.5, 0]}><cylinderGeometry args={[0.08, 0.11, 5, 8]} /><primitive object={concrete} attach="material" /></mesh>
-      <mesh position={[3.7, 2.5, 0]}><cylinderGeometry args={[0.08, 0.11, 5, 8]} /><primitive object={concrete} attach="material" /></mesh>
-      <mesh position={[0, 4.65, 0]} castShadow><boxGeometry args={[7.6, 1.65, 0.16]} /><meshStandardMaterial color="#17643f" roughness={0.7} /></mesh>
-      <mesh position={[0, 4.65, 0.09]}><boxGeometry args={[6.2, 0.12, 0.03]} /><primitive object={white} attach="material" /></mesh>
-      <mesh position={[-2.25, 4.95, 0.1]}><boxGeometry args={[1.35, 0.18, 0.03]} /><primitive object={white} attach="material" /></mesh>
-      <mesh position={[1.45, 4.35, 0.1]}><boxGeometry args={[2.5, 0.14, 0.03]} /><primitive object={white} attach="material" /></mesh>
-    </group>)}
+    {anchors.filter((anchor) => anchor.kind === 'overhead').map(({ id, slice: overhead }) => {
+      const gantry = buildOverheadGantryLayout(overhead)
+      return <group key={id} position={toThree(gantry.centre)} rotation={[0, -overhead.heading, 0]}>
+        <mesh position={[-gantry.supportOffsetM, gantry.supportHeightM / 2, 0]}><cylinderGeometry args={[0.09, 0.12, gantry.supportHeightM, 8]} /><primitive object={concrete} attach="material" /></mesh>
+        <mesh position={[gantry.supportOffsetM, gantry.supportHeightM / 2, 0]}><cylinderGeometry args={[0.09, 0.12, gantry.supportHeightM, 8]} /><primitive object={concrete} attach="material" /></mesh>
+        <mesh position={[0, gantry.supportHeightM, 0]}><boxGeometry args={[gantry.spanM, 0.16, 0.16]} /><primitive object={concrete} attach="material" /></mesh>
+        <mesh position={[0, gantry.panelCentreYM, 0]} castShadow><boxGeometry args={[gantry.panelWidthM, gantry.panelHeightM, 0.16]} /><meshStandardMaterial color="#17643f" roughness={0.7} /></mesh>
+        <mesh position={[0, gantry.panelCentreYM, 0.09]}><boxGeometry args={[gantry.panelWidthM * 0.82, 0.1, 0.03]} /><primitive object={white} attach="material" /></mesh>
+        <mesh position={[-gantry.panelWidthM * 0.28, gantry.panelCentreYM + 0.25, 0.1]}><boxGeometry args={[gantry.panelWidthM * 0.18, 0.15, 0.03]} /><primitive object={white} attach="material" /></mesh>
+        <mesh position={[gantry.panelWidthM * 0.19, gantry.panelCentreYM - 0.24, 0.1]}><boxGeometry args={[gantry.panelWidthM * 0.34, 0.12, 0.03]} /><primitive object={white} attach="material" /></mesh>
+      </group>
+    })}
     {anchors.filter((anchor) => anchor.kind === 'warning').map(({ id, slice: warning }) => {
       const warningPoint = {
         x: warning.rightEdge.x + Math.cos(warning.heading) * 4,

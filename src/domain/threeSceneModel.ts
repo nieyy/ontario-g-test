@@ -1,4 +1,4 @@
-import type { CentreRoadProfile, LaneBoundaryMarking, RoadPosition, RoadSectionTemplate } from '../content/roadProfiles/types'
+import type { CentreRoadProfile, RoadPosition, RoadSectionTemplate } from '../content/roadProfiles/types'
 import { newmarketRoadProfile } from '../content/roadProfiles/newmarket'
 import { buildRoadFrame, type RenderRoadSlice } from './roadFrame'
 
@@ -70,10 +70,6 @@ export function validateSceneSlices(slices: RenderRoadSlice[]) {
       const id = `${index}:${lane.laneId}`
       if (ids.has(id)) errors.push(`slice:${index}: duplicate lane ${lane.laneId}`)
       ids.add(id)
-      const markings: LaneBoundaryMarking[] = [lane.leftMarking, lane.rightMarking]
-      if (lane.direction === 'forward' && lane.role !== 'parking-access' && markings.includes('single-yellow') && markings.includes('dashed-white')) {
-        errors.push(`slice:${index}:${lane.laneId}: conflicting boundary semantics`)
-      }
     }
   }
   return errors

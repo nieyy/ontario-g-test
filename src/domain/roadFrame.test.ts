@@ -69,4 +69,17 @@ describe('road frame builder', () => {
     expect(after.slices.at(-1)!.routeDistanceM).toBeGreaterThanOrEqual(312)
     expect(after.slices.every((slice) => slice.lanes.some((lane) => lane.laneId === 'exit-ramp'))).toBe(true)
   })
+
+  it('joins the acceleration lane to the freeway right lane without a lateral jump', () => {
+    const frame = buildRoadFrame({
+      position: { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-ramp', sectionId: 'highway-404-on-ramp', sMeters: 520, laneId: 'ramp-mainline' },
+      edgeIds: ['edge-ramp', 'edge-mainline'],
+    })
+    const rampEnd = frame.slices.find((slice) => slice.edgeId === 'edge-ramp' && slice.sM === 560)!
+    const freewayStart = frame.slices.find((slice) => slice.edgeId === 'edge-mainline' && slice.sM === 0)!
+    const rampLane = rampEnd.lanes.find((lane) => lane.laneId === 'ramp-mainline')!
+    const freewayLane = freewayStart.lanes.find((lane) => lane.laneId === 'mainline-right')!
+    expect(Math.hypot(freewayLane.centre.x - rampLane.centre.x, freewayLane.centre.z - rampLane.centre.z)).toBeLessThan(0.1)
+    expect(rampEnd.lanes.some((lane) => lane.laneId === 'ramp-merge')).toBe(false)
+  })
 })

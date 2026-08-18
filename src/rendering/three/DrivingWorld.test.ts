@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildRoadFrame, type RenderRoadSlice } from '../../domain/roadFrame'
 import { buildEnvironmentDecorations } from './EnvironmentDecorations'
-import { buildFreewayFurnitureAnchors, buildGuardRailPosts } from './FreewayFurnitureModel'
+import { buildFreewayFurnitureAnchors, buildGuardRailPosts, buildOverheadGantryLayout } from './FreewayFurnitureModel'
 import { ribbonGeometry, stripGeometry } from './RoadGeometry'
 
 const slice = (z: number): RenderRoadSlice => ({
@@ -56,5 +56,15 @@ describe('Three.js road geometry', () => {
     expect(advancedAnchors.find((anchor) => anchor.id === 'edge-exit-overhead-180')!.slice.sM)
       .toBe(firstAnchors.find((anchor) => anchor.id === 'edge-exit-overhead-180')!.slice.sM)
     expect(buildGuardRailPosts(first).every((roadSlice) => Math.abs(roadSlice.sM / 32 - Math.round(roadSlice.sM / 32)) < 0.08)).toBe(true)
+  })
+
+  it('places overhead gantry supports beyond the road edges with safe clearance', () => {
+    const roadSlice = { ...slice(180), leftEdge: { x: -7.2, z: 180 }, rightEdge: { x: 7.2, z: 180 } }
+    const gantry = buildOverheadGantryLayout(roadSlice)
+
+    expect(gantry.supportOffsetM).toBeGreaterThan(gantry.roadWidthM / 2 + 2)
+    expect(gantry.spanM).toBeGreaterThan(gantry.roadWidthM)
+    expect(gantry.panelCentreYM - gantry.panelHeightM / 2).toBeGreaterThanOrEqual(5.5)
+    expect(gantry.centre).toEqual({ x: 0, z: 180 })
   })
 })

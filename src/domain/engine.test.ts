@@ -91,6 +91,13 @@ describe('deterministic engine', () => {
       sectionId: 'highway-404-on-ramp',
       laneId: 'ramp-merge',
     })
+    expect(state.speedKph).toBe(45)
+  })
+
+  it('starts focused freeway practice at a realistic moving speed while full routes remain parked', () => {
+    expect(createEngine(24, 'practice', 'slow-lead').speedKph).toBe(82)
+    expect(createEngine(25, 'practice', 'freeway-exit').speedKph).toBe(80)
+    expect(createEngine(26, 'practice').speedKph).toBe(0)
   })
 
   it('keeps RoadPosition, lane animation and steering direction aligned', () => {
