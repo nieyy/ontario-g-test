@@ -55,8 +55,8 @@ export function buildRouteSceneModel(input: { profile?: CentreRoadProfile; route
   }
 }
 
-export function buildVisibleScene(position: RoadPosition, laneOffsetM: number, turnDirection: 'left' | 'right' | null, turnProgress: number) {
-  return buildRoadFrame({ position, laneOffsetM, turnDirection, turnProgress, viewDistanceM: 360 })
+export function buildVisibleScene(position: RoadPosition, laneOffsetM: number, turnDirection: 'left' | 'right' | null, turnProgress: number, edgeIds?: readonly string[]) {
+  return buildRoadFrame({ position, edgeIds, laneOffsetM, turnDirection, turnProgress, viewDistanceM: 360 })
 }
 
 export function validateSceneSlices(slices: RenderRoadSlice[]) {

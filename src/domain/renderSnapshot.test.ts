@@ -36,4 +36,24 @@ describe('3D render snapshot', () => {
     expect(cross!.forwardM).toBeGreaterThan(10)
     if (snapshot.road.intersection) expect(cross!.forwardM).toBeCloseTo(snapshot.road.intersection.distanceAheadM)
   })
+
+  it('despawns completed traffic before a differently seeded vehicle enters', () => {
+    const engine = createEngine(71, 'practice', 'multilane-left')
+    const scenario = engine.route[0]
+    const first = buildRenderSnapshot({ engine, scenario }).actors.find((actor) => actor.role === 'opposing')
+    const quiet = buildRenderSnapshot({ engine: { ...engine, scenarioElapsed: 16 }, scenario }).actors.find((actor) => actor.role === 'opposing')
+    const next = buildRenderSnapshot({ engine: { ...engine, scenarioElapsed: 26 }, scenario }).actors.find((actor) => actor.role === 'opposing')
+
+    expect(first).toBeDefined()
+    expect(quiet).toBeUndefined()
+    expect(next).toBeDefined()
+    expect(next!.id).not.toBe(first!.id)
+    expect(next).not.toEqual(first)
+  })
+
+  it('keeps seeded traffic deterministic for replay and scoring', () => {
+    const engine = { ...createEngine(72, 'practice', 'yellow-light'), scenarioElapsed: 21 }
+    const scenario = engine.route[0]
+    expect(buildRenderSnapshot({ engine, scenario }).actors).toEqual(buildRenderSnapshot({ engine, scenario }).actors)
+  })
 })

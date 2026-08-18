@@ -161,18 +161,24 @@ const sections: RoadSectionDefinition[] = [
     displayName: 'Highway 404–inspired on-ramp',
     trainingLabel: 'Authored curved ramp and acceleration lane',
     lengthM: 560,
-    speedLimitKph: 100,
+    speedLimitKph: 70,
     centerline: [
       { sM: 0, xM: 0, zM: 0 },
-      { sM: 180, xM: 28, zM: 170 },
-      { sM: 360, xM: 38, zM: 350 },
-      { sM: 560, xM: 40, zM: 550 },
+      { sM: 80, xM: 4, zM: 78 },
+      { sM: 160, xM: 16, zM: 154 },
+      { sM: 240, xM: 34, zM: 226 },
+      { sM: 320, xM: 49, zM: 301 },
+      { sM: 400, xM: 56, zM: 380 },
+      { sM: 560, xM: 58, zM: 540 },
     ],
     lanes: [
-      lane({ id: 'ramp-mainline', role: 'through', lengthM: 560, offsetM: -1.8, left: 'solid-white', right: 'dashed-white' }),
-      lane({ id: 'ramp-merge', role: 'merge', lengthM: 560, endsAtM: 480, offsetProfile: [{ sM: 0, centerOffsetM: 1.8 }, { sM: 380, centerOffsetM: 1.8 }, { sM: 480, centerOffsetM: -1.8 }], left: 'dashed-white', right: 'curb', movements: ['merge'] }),
+      lane({ id: 'ramp-mainline', role: 'through', lengthM: 560, startsAtM: 140, offsetM: -1.8, left: 'solid-white', right: 'dashed-white' }),
+      lane({ id: 'ramp-merge', role: 'merge', lengthM: 560, endsAtM: 480, offsetProfile: [{ sM: 0, centerOffsetM: 0 }, { sM: 140, centerOffsetM: 0 }, { sM: 260, centerOffsetM: 1.8 }, { sM: 380, centerOffsetM: 1.8 }, { sM: 480, centerOffsetM: -1.8 }], left: 'dashed-white', right: 'curb', movements: ['merge'] }),
     ],
-    transitions: [{ id: 'ramp-merge-transition', atM: 380, taperLengthM: 100, kind: 'merge', fromLaneIds: ['ramp-merge'], toLaneIds: ['ramp-mainline'] }],
+    transitions: [
+      { id: 'mainline-enters-view', atM: 140, taperLengthM: 120, kind: 'split', fromLaneIds: ['ramp-merge'], toLaneIds: ['ramp-merge', 'ramp-mainline'] },
+      { id: 'ramp-merge-transition', atM: 380, taperLengthM: 100, kind: 'merge', fromLaneIds: ['ramp-merge'], toLaneIds: ['ramp-mainline'] },
+    ],
     sourceRefs: authored,
     fidelity: 'authored-approximation',
   },
@@ -181,13 +187,13 @@ const sections: RoadSectionDefinition[] = [
     template: 'freeway-mainline',
     displayName: 'Highway 404–inspired mainline',
     trainingLabel: 'Authored three-lane divided freeway',
-    lengthM: 1100,
+    lengthM: 6000,
     speedLimitKph: 100,
-    centerline: straight(1100, 10),
+    centerline: straight(6000, 28),
     lanes: [
-      lane({ id: 'mainline-left', role: 'through', lengthM: 1100, offsetM: -3.6, left: 'solid-white', right: 'dashed-white' }),
-      lane({ id: 'mainline-centre', role: 'through', lengthM: 1100, offsetM: 0, left: 'dashed-white', right: 'dashed-white' }),
-      lane({ id: 'mainline-right', role: 'through', lengthM: 1100, offsetM: 3.6, left: 'dashed-white', right: 'solid-white' }),
+      lane({ id: 'mainline-left', role: 'through', lengthM: 6000, offsetM: -3.6, left: 'solid-white', right: 'dashed-white' }),
+      lane({ id: 'mainline-centre', role: 'through', lengthM: 6000, offsetM: 0, left: 'dashed-white', right: 'dashed-white' }),
+      lane({ id: 'mainline-right', role: 'through', lengthM: 6000, offsetM: 3.6, left: 'dashed-white', right: 'solid-white' }),
     ],
     transitions: [],
     sourceRefs: contextual,
@@ -259,7 +265,7 @@ const movements: RouteMovement[] = [
 export const newmarketRoadProfile: CentreRoadProfile = {
   id: 'newmarket-road-profile-v1',
   centreId: 'newmarket',
-  version: '1.1.1',
+  version: '1.1.2',
   displayName: 'Newmarket-inspired teaching corridor',
   disclaimer: 'Teaching approximation · not an official, recorded, guaranteed or predicted DriveTest route.',
   sourceNotices: [
@@ -277,7 +283,7 @@ export const newmarketRoadProfile: CentreRoadProfile = {
     movements,
     traversalEdgeIds: edges.map((edge) => edge.id),
   }],
-  contentHash: 'newmarket-road-profile-v1.1.1-authored-20260817',
+  contentHash: 'newmarket-road-profile-v1.1.2-authored-20260818',
 }
 
 export const newmarketRouteBindings = {

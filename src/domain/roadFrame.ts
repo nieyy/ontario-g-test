@@ -53,7 +53,13 @@ type Placement = {
 
 function centreAt(points: Array<{ sM: number; xM: number; zM: number }>, sM: number) {
   if (sM <= points[0].sM) return { x: points[0].xM, z: points[0].zM }
-  if (sM >= points.at(-1)!.sM) return { x: points.at(-1)!.xM, z: points.at(-1)!.zM }
+  if (sM >= points.at(-1)!.sM) {
+    const from = points.at(-2)!
+    const to = points.at(-1)!
+    const segmentM = Math.max(0.001, to.sM - from.sM)
+    const extraM = sM - to.sM
+    return { x: to.xM + ((to.xM - from.xM) / segmentM) * extraM, z: to.zM + ((to.zM - from.zM) / segmentM) * extraM }
+  }
   const index = points.findIndex((point) => point.sM >= sM)
   const from = points[index - 1]
   const to = points[index]
@@ -63,7 +69,7 @@ function centreAt(points: Array<{ sM: number; xM: number; zM: number }>, sM: num
 
 function headingAt(points: Array<{ sM: number; xM: number; zM: number }>, sM: number) {
   const before = centreAt(points, Math.max(0, sM - 1))
-  const after = centreAt(points, Math.min(points.at(-1)!.sM, sM + 1))
+  const after = centreAt(points, sM + 1)
   return Math.atan2(after.x - before.x, Math.max(0.001, after.z - before.z))
 }
 
@@ -91,9 +97,10 @@ function sectionSlice(placement: Placement, sM: number): RenderRoadSlice {
   const localCentre = centreAt(placement.section.centerline, sM)
   const centre = transform(localCentre, placement)
   const heading = headingAt(placement.section.centerline, sM) + placement.rotation
+  const laneSampleM = Math.min(placement.section.lengthM, Math.max(0, sM))
   const lanes = placement.section.lanes.map((lane) => {
-    const widthM = laneEffectiveWidth(placement.section, lane, sM)
-    const laneCentre = offsetPoint(centre, heading, laneOffsetAt(lane, sM))
+    const widthM = laneEffectiveWidth(placement.section, lane, laneSampleM)
+    const laneCentre = offsetPoint(centre, heading, laneOffsetAt(lane, laneSampleM))
     return {
       laneId: lane.id,
       role: lane.role,
@@ -102,14 +109,14 @@ function sectionSlice(placement: Placement, sM: number): RenderRoadSlice {
       leftEdge: offsetPoint(laneCentre, heading, -widthM / 2),
       rightEdge: offsetPoint(laneCentre, heading, widthM / 2),
       widthM,
-      leftMarking: markingAt(lane.leftBoundary, sM),
-      rightMarking: markingAt(lane.rightBoundary, sM),
+      leftMarking: markingAt(lane.leftBoundary, laneSampleM),
+      rightMarking: markingAt(lane.rightBoundary, laneSampleM),
     }
   }).filter((lane) => lane.widthM > 0.08)
   const lateralEdges = placement.section.lanes.flatMap((lane) => {
     const rendered = lanes.find((item) => item.laneId === lane.id)
     if (!rendered) return []
-    const offset = laneOffsetAt(lane, sM)
+    const offset = laneOffsetAt(lane, laneSampleM)
     return [{ offset: offset - rendered.widthM / 2, point: rendered.leftEdge }, { offset: offset + rendered.widthM / 2, point: rendered.rightEdge }]
   }).sort((left, right) => left.offset - right.offset)
   return {
@@ -159,6 +166,7 @@ function nextPlacement(previous: Placement, route: RouteGraph, edgeId: string, r
 
 export function buildRoadFrame(input: {
   position: RoadPosition
+  edgeIds?: readonly string[]
   laneOffsetM?: number
   turnDirection?: 'left' | 'right' | null
   turnProgress?: number
@@ -168,14 +176,15 @@ export function buildRoadFrame(input: {
   const facts = getRoadFacts(input.position, profile)
   const section = facts.section
   const route = profile.routes.find((item) => item.id === input.position.routeId)!
-  const currentEdgeIndex = route.traversalEdgeIds.indexOf(input.position.edgeId)
+  const traversalEdgeIds = input.edgeIds ?? route.traversalEdgeIds
+  const currentEdgeIndex = traversalEdgeIds.indexOf(input.position.edgeId)
   const currentStart = centreAt(section.centerline, 0)
   const currentPlacement: Placement = { edgeId: input.position.edgeId, section, routeStartM: -input.position.sMeters, rotation: 0, localOrigin: currentStart, worldOrigin: currentStart }
   const viewDistanceM = input.viewDistanceM ?? 320
   const placements = [currentPlacement]
   let routeStartM = section.lengthM - input.position.sMeters
   let previous = currentPlacement
-  for (const edgeId of route.traversalEdgeIds.slice(currentEdgeIndex + 1)) {
+  for (const edgeId of traversalEdgeIds.slice(currentEdgeIndex + 1)) {
     if (routeStartM > viewDistanceM) break
     const placement = nextPlacement(previous, route, edgeId, routeStartM)
     placements.push(placement)
@@ -186,7 +195,9 @@ export function buildRoadFrame(input: {
   const slices = placements.flatMap((placement, index) => {
     const fromM = index === 0 ? Math.max(0, input.position.sMeters - 10) : 0
     const remaining = viewDistanceM - placement.routeStartM
-    const toM = Math.min(placement.section.lengthM, index === 0 ? input.position.sMeters + viewDistanceM : remaining)
+    const isTerminal = index === placements.length - 1 && placement.edgeId === traversalEdgeIds.at(-1)
+    const authoredToM = index === 0 ? input.position.sMeters + viewDistanceM : remaining
+    const toM = isTerminal ? authoredToM : Math.min(placement.section.lengthM, authoredToM)
     return toM >= fromM ? sampleSection(placement, fromM, toM) : []
   })
 

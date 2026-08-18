@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { RenderSnapshot, TrafficActor } from '../../domain/renderSnapshot'
 import type { RenderRoadSlice } from '../../domain/roadFrame'
 import { buildEnvironmentDecorations } from './EnvironmentDecorations'
+import { buildFreewayFurnitureAnchors, buildGuardRailPosts } from './FreewayFurnitureModel'
 import { ribbonGeometry, stripGeometry } from './RoadGeometry'
 import type { SceneQualityConfig } from './SceneQuality'
 
@@ -59,7 +60,7 @@ function FreewayFurniture({ slices }: { slices: RenderRoadSlice[] }) {
     rails.left.dispose()
     rails.right.dispose()
   }, [rails])
-  const posts = slices.filter((_, index) => index % 4 === 0).flatMap((slice) => ([-1, 1] as const).map((side) => {
+  const posts = buildGuardRailPosts(slices).flatMap((slice) => ([-1, 1] as const).map((side) => {
     const edge = side < 0 ? slice.leftEdge : slice.rightEdge
     return {
       id: `${slice.edgeId}-${slice.sM}-${side}`,
@@ -69,28 +70,29 @@ function FreewayFurniture({ slices }: { slices: RenderRoadSlice[] }) {
       },
     }
   }))
-  const overhead = slices.reduce((closest, slice) => Math.abs(slice.routeDistanceM - 95) < Math.abs(closest.routeDistanceM - 95) ? slice : closest, slices[0])
-  const warning = slices.reduce((closest, slice) => Math.abs(slice.routeDistanceM - 48) < Math.abs(closest.routeDistanceM - 48) ? slice : closest, slices[0])
-  const warningPoint = {
-    x: warning.rightEdge.x + Math.cos(warning.heading) * 4,
-    z: warning.rightEdge.z - Math.sin(warning.heading) * 4,
-  }
+  const anchors = buildFreewayFurnitureAnchors(slices)
   return <>
     <mesh geometry={rails.left} material={concrete} />
     <mesh geometry={rails.right} material={concrete} />
     {posts.map((post) => <mesh key={post.id} position={toThree(post.point, 0.3)}><cylinderGeometry args={[0.05, 0.06, 0.6, 6]} /><primitive object={concrete} attach="material" /></mesh>)}
-    <group position={toThree(overhead.centre)} rotation={[0, -overhead.heading, 0]}>
+    {anchors.filter((anchor) => anchor.kind === 'overhead').map(({ id, slice: overhead }) => <group key={id} position={toThree(overhead.centre)} rotation={[0, -overhead.heading, 0]}>
       <mesh position={[-3.7, 2.5, 0]}><cylinderGeometry args={[0.08, 0.11, 5, 8]} /><primitive object={concrete} attach="material" /></mesh>
       <mesh position={[3.7, 2.5, 0]}><cylinderGeometry args={[0.08, 0.11, 5, 8]} /><primitive object={concrete} attach="material" /></mesh>
       <mesh position={[0, 4.65, 0]} castShadow><boxGeometry args={[7.6, 1.65, 0.16]} /><meshStandardMaterial color="#17643f" roughness={0.7} /></mesh>
       <mesh position={[0, 4.65, 0.09]}><boxGeometry args={[6.2, 0.12, 0.03]} /><primitive object={white} attach="material" /></mesh>
       <mesh position={[-2.25, 4.95, 0.1]}><boxGeometry args={[1.35, 0.18, 0.03]} /><primitive object={white} attach="material" /></mesh>
       <mesh position={[1.45, 4.35, 0.1]}><boxGeometry args={[2.5, 0.14, 0.03]} /><primitive object={white} attach="material" /></mesh>
-    </group>
-    <group position={toThree(warningPoint)} rotation={[0, -warning.heading, 0]}>
+    </group>)}
+    {anchors.filter((anchor) => anchor.kind === 'warning').map(({ id, slice: warning }) => {
+      const warningPoint = {
+        x: warning.rightEdge.x + Math.cos(warning.heading) * 4,
+        z: warning.rightEdge.z - Math.sin(warning.heading) * 4,
+      }
+      return <group key={id} position={toThree(warningPoint)} rotation={[0, -warning.heading, 0]}>
       <mesh position={[0, 1.05, 0]}><cylinderGeometry args={[0.045, 0.055, 2.1, 6]} /><primitive object={concrete} attach="material" /></mesh>
       <mesh position={[0, 2.05, 0]} rotation={[0, 0, Math.PI / 4]}><boxGeometry args={[0.72, 0.72, 0.1]} /><meshStandardMaterial color="#f2c94c" roughness={0.8} /></mesh>
-    </group>
+      </group>
+    })}
   </>
 }
 
@@ -219,10 +221,15 @@ function Car({ actor, snapshot }: { actor: TrafficActor; snapshot: RenderSnapsho
     group.current.position.lerp(targetPosition, amount)
     group.current.quaternion.slerp(targetQuaternion, amount)
   })
+  const dimensions = actor.model === 'pickup'
+    ? { width: 1.92, bodyHeight: 0.78, length: 4.8, cabinHeight: 0.58, cabinLength: 1.85, cabinZ: -0.55 }
+    : actor.model === 'suv'
+      ? { width: 1.9, bodyHeight: 0.9, length: 4.45, cabinHeight: 0.82, cabinLength: 2.45, cabinZ: -0.12 }
+      : { width: 1.75, bodyHeight: 0.7, length: 3.9, cabinHeight: 0.65, cabinLength: 1.9, cabinZ: -0.25 }
   return <group ref={group} position={targetPosition} quaternion={targetQuaternion}>
-    <mesh castShadow><boxGeometry args={[1.75, 0.7, 3.9]} /><meshStandardMaterial color={actor.colour} roughness={0.55} metalness={0.1} /></mesh>
-    <mesh position={[0, 0.55, -0.25]} castShadow><boxGeometry args={[1.5, 0.65, 1.9]} /><meshStandardMaterial color="#66818e" roughness={0.2} metalness={0.15} /></mesh>
-    {[-0.9, 0.9].flatMap((zWheel) => [-0.78, 0.78].map((xWheel) => <mesh key={`${xWheel}-${zWheel}`} position={[xWheel, -0.28, zWheel]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.34, 0.34, 0.2, 12]} /><meshStandardMaterial color="#171a1c" /></mesh>))}
+    <mesh castShadow><boxGeometry args={[dimensions.width, dimensions.bodyHeight, dimensions.length]} /><meshStandardMaterial color={actor.colour} roughness={0.55} metalness={0.1} /></mesh>
+    <mesh position={[0, 0.55, dimensions.cabinZ]} castShadow><boxGeometry args={[dimensions.width - 0.25, dimensions.cabinHeight, dimensions.cabinLength]} /><meshStandardMaterial color="#66818e" roughness={0.2} metalness={0.15} /></mesh>
+    {[-dimensions.length * 0.29, dimensions.length * 0.29].flatMap((zWheel) => [-dimensions.width * 0.45, dimensions.width * 0.45].map((xWheel) => <mesh key={`${xWheel}-${zWheel}`} position={[xWheel, -0.28, zWheel]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.34, 0.34, 0.2, 12]} /><meshStandardMaterial color="#171a1c" /></mesh>))}
   </group>
 }
 

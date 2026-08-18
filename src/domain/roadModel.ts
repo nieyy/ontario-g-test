@@ -82,9 +82,10 @@ export function laneEffectiveWidth(section: RoadSectionDefinition, lane: LaneDef
 }
 
 export function activeForwardLanes(section: RoadSectionDefinition, sM: number) {
+  const sampleM = Math.min(section.lengthM, Math.max(0, sM))
   return section.lanes
-    .filter((lane) => lane.direction === 'forward' && laneEffectiveWidth(section, lane, sM) > 0.25)
-    .sort((left, right) => laneOffsetAt(left, sM) - laneOffsetAt(right, sM))
+    .filter((lane) => lane.direction === 'forward' && laneEffectiveWidth(section, lane, sampleM) > 0.25)
+    .sort((left, right) => laneOffsetAt(left, sampleM) - laneOffsetAt(right, sampleM))
 }
 
 function boundaryAt(lane: LaneDefinition, side: 'leftBoundary' | 'rightBoundary', sM: number): LaneBoundaryMarking {
@@ -97,15 +98,16 @@ function canCross(marking: LaneBoundaryMarking) {
 
 export function getAvailableLaneActions(position: RoadPosition, profile = newmarketRoadProfile): LaneAction[] {
   const section = getSection(profile, position.sectionId)
-  const lanes = activeForwardLanes(section, position.sMeters)
+  const sampleM = Math.min(section.lengthM, position.sMeters)
+  const lanes = activeForwardLanes(section, sampleM)
   const currentIndex = lanes.findIndex((lane) => lane.id === position.laneId)
   if (currentIndex < 0) return []
   const actions: LaneAction[] = []
   const current = lanes[currentIndex]
   const left = lanes[currentIndex - 1]
   const right = lanes[currentIndex + 1]
-  if (left && canCross(boundaryAt(current, 'leftBoundary', position.sMeters)) && canCross(boundaryAt(left, 'rightBoundary', position.sMeters))) actions.push({ direction: 'left', targetLaneId: left.id, targetRole: left.role, label: `Move left to ${left.role.replace('-', ' ')} lane` })
-  if (right && canCross(boundaryAt(current, 'rightBoundary', position.sMeters)) && canCross(boundaryAt(right, 'leftBoundary', position.sMeters))) actions.push({ direction: 'right', targetLaneId: right.id, targetRole: right.role, label: `Move right to ${right.role.replace('-', ' ')} lane` })
+  if (left && canCross(boundaryAt(current, 'leftBoundary', sampleM)) && canCross(boundaryAt(left, 'rightBoundary', sampleM))) actions.push({ direction: 'left', targetLaneId: left.id, targetRole: left.role, label: `Move left to ${left.role.replace('-', ' ')} lane` })
+  if (right && canCross(boundaryAt(current, 'rightBoundary', sampleM)) && canCross(boundaryAt(right, 'leftBoundary', sampleM))) actions.push({ direction: 'right', targetLaneId: right.id, targetRole: right.role, label: `Move right to ${right.role.replace('-', ' ')} lane` })
   return actions
 }
 
@@ -150,7 +152,12 @@ export function advanceRoadPosition(position: RoadPosition, deltaMeters: number,
     if (remaining <= 0 || next.sMeters < section.lengthM) break
     const edgeIndex = binding.edgeIds.indexOf(next.edgeId)
     const nextEdgeId = binding.edgeIds[edgeIndex + 1]
-    if (!nextEdgeId) break
+    if (!nextEdgeId) {
+      // A focused exercise can outlast its authored edge. Continue the final
+      // road tangent instead of freezing the camera while the speedometer runs.
+      next.sMeters += remaining
+      break
+    }
     const route = getRoute(profile, next.routeId)
     const nextEdge = getEdge(profile, next.routeId, nextEdgeId)
     const movement = route.movements.find((candidate) => candidate.fromEdgeId === next.edgeId && candidate.toEdgeId === nextEdgeId && candidate.fromLaneId === next.laneId)

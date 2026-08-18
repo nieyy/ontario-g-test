@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { newmarketRoadProfile, newmarketRouteBindings } from '../content/roadProfiles/newmarket'
+import { scenarioOrder } from '../content/data'
+import type { RouteBinding } from '../content/roadProfiles/types'
 import { advanceRoadPosition, canTurnFromRoad, createRoadPosition, getAvailableLaneActions, getRoadFacts, requestAdjacentLane } from './roadModel'
 
 describe('dynamic road model', () => {
+  function routeDistance(position: ReturnType<typeof createRoadPosition>, binding: RouteBinding) {
+    const edgeIndex = binding.edgeIds.indexOf(position.edgeId)
+    const preceding = binding.edgeIds.slice(0, edgeIndex).reduce((total, edgeId) => {
+      const edge = newmarketRoadProfile.routes[0].edges.find((candidate) => candidate.id === edgeId)!
+      const section = newmarketRoadProfile.sections.find((candidate) => candidate.id === edge.sectionId)!
+      return total + section.lengthM
+    }, 0)
+    return preceding + position.sMeters
+  }
+
   it('uses stable route, edge, section and lane identifiers', () => {
     const position = createRoadPosition(newmarketRouteBindings['right-on-red'], 'right-on-red')
     expect(position).toEqual({ routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-parking', sectionId: 'newmarket-parking-exit', sMeters: 0, laneId: 'parking-access' })
@@ -44,5 +56,38 @@ describe('dynamic road model', () => {
     expect(facts('edge-local', 'harry-walker-local', 'local-forward').forwardLaneCount).toBe(1)
     expect(facts('edge-arterial', 'davis-leslie-arterial', 'arterial-left').forwardLaneCount).toBe(2)
     expect(facts('edge-mainline', 'highway-404-mainline', 'mainline-centre').forwardLaneCount).toBe(3)
+  })
+
+  it('starts freeway merge on a single-lane ramp before exposing the mainline to the left', () => {
+    const start = createRoadPosition(newmarketRouteBindings['freeway-merge'], 'freeway-merge')
+    expect(start.laneId).toBe('ramp-merge')
+    expect(getRoadFacts(start).forwardLaneCount).toBe(1)
+    expect(getRoadFacts(start).speedLimitKph).toBe(70)
+    expect(getAvailableLaneActions(start)).toEqual([])
+
+    const accelerationLane = { ...start, sMeters: 270 }
+    expect(getRoadFacts(accelerationLane).forwardLaneCount).toBe(2)
+    expect(getAvailableLaneActions(accelerationLane)).toMatchObject([{ direction: 'left', targetLaneId: 'ramp-mainline', targetRole: 'through' }])
+  })
+
+  it('keeps enough freeway mainline ahead for the complete timed merge scene', () => {
+    const binding = newmarketRouteBindings['freeway-merge']
+    const start = createRoadPosition(binding, 'freeway-merge')
+    const atMaximumDistance = advanceRoadPosition(start, (120 / 3.6) * 160, binding)
+    expect(atMaximumDistance.edgeId).toBe('edge-mainline')
+    expect(getRoadFacts(atMaximumDistance).speedLimitKph).toBe(100)
+    expect(atMaximumDistance.sMeters).toBeGreaterThan(4_000)
+    expect(atMaximumDistance.sMeters).toBeLessThan(getRoadFacts(atMaximumDistance).section.lengthM)
+  })
+
+  it('keeps physical road progress moving for every scenario after authored content ends', () => {
+    const maximumDistance = (120 / 3.6) * 160
+    for (const type of scenarioOrder) {
+      const binding = newmarketRouteBindings[type]
+      const start = createRoadPosition(binding, type)
+      const before = advanceRoadPosition(start, maximumDistance - 100, binding)
+      const after = advanceRoadPosition(start, maximumDistance, binding)
+      expect(routeDistance(after, binding) - routeDistance(before, binding), type).toBeCloseTo(100)
+    }
   })
 })

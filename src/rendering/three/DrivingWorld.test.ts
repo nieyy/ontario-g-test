@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildRoadFrame, type RenderRoadSlice } from '../../domain/roadFrame'
 import { buildEnvironmentDecorations } from './EnvironmentDecorations'
+import { buildFreewayFurnitureAnchors, buildGuardRailPosts } from './FreewayFurnitureModel'
 import { ribbonGeometry, stripGeometry } from './RoadGeometry'
 
 const slice = (z: number): RenderRoadSlice => ({
@@ -41,5 +42,19 @@ describe('Three.js road geometry', () => {
       expect(after.z).toBe(before.z)
       expect(after.kind).toBe(before.kind)
     }
+  })
+
+  it('keeps freeway signs and rail posts at fixed edge coordinates', () => {
+    const position = { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-exit', sectionId: 'highway-404-off-ramp', laneId: 'exit-ramp' }
+    const first = buildRoadFrame({ position: { ...position, sMeters: 0 }, edgeIds: ['edge-exit'], viewDistanceM: 360 }).slices
+    const advanced = buildRoadFrame({ position: { ...position, sMeters: 40 }, edgeIds: ['edge-exit'], viewDistanceM: 360 }).slices
+    const firstAnchors = buildFreewayFurnitureAnchors(first)
+    const advancedAnchors = buildFreewayFurnitureAnchors(advanced)
+
+    expect(firstAnchors.map((anchor) => anchor.id)).toEqual(expect.arrayContaining(['edge-exit-warning-115', 'edge-exit-overhead-180']))
+    expect(advancedAnchors.map((anchor) => anchor.id)).toEqual(expect.arrayContaining(['edge-exit-warning-115', 'edge-exit-overhead-180']))
+    expect(advancedAnchors.find((anchor) => anchor.id === 'edge-exit-overhead-180')!.slice.sM)
+      .toBe(firstAnchors.find((anchor) => anchor.id === 'edge-exit-overhead-180')!.slice.sM)
+    expect(buildGuardRailPosts(first).every((roadSlice) => Math.abs(roadSlice.sM / 32 - Math.round(roadSlice.sM / 32)) < 0.08)).toBe(true)
   })
 })

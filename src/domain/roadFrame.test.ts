@@ -60,4 +60,13 @@ describe('road frame builder', () => {
     const right = buildRoadFrame({ position, turnDirection: 'right', turnProgress: 0.5 })
     expect(left.camera.heading).toBeLessThan(right.camera.heading)
   })
+
+  it('renders a continuous terminal road tangent after a focused scenario edge ends', () => {
+    const input = { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-exit', sectionId: 'highway-404-off-ramp', laneId: 'exit-ramp' }
+    const before = buildRoadFrame({ position: { ...input, sMeters: 1300 }, edgeIds: ['edge-exit'] })
+    const after = buildRoadFrame({ position: { ...input, sMeters: 1400 }, edgeIds: ['edge-exit'] })
+    expect(Math.hypot(after.camera.x - before.camera.x, after.camera.z - before.camera.z)).toBeGreaterThan(98)
+    expect(after.slices.at(-1)!.routeDistanceM).toBeGreaterThanOrEqual(312)
+    expect(after.slices.every((slice) => slice.lanes.some((lane) => lane.laneId === 'exit-ramp'))).toBe(true)
+  })
 })
