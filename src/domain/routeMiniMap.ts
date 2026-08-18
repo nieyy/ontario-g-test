@@ -3,12 +3,18 @@ import type { CentreRoadProfile, RoadPosition } from '../content/roadProfiles/ty
 import { getEdge, getRoute, getSection } from './roadModel'
 
 export type MiniMapModel = {
+  contextPoints: Array<{ x: number; y: number }>
   points: Array<{ x: number; y: number }>
   nodes: Array<{ x: number; y: number; state: 'done' | 'current' | 'upcoming'; label: string }>
   vehicle: { x: number; y: number }
   currentLabel: string
   currentEdgeIndex: number
   edgeCount: number
+}
+
+type MiniMapOptions = {
+  profile?: CentreRoadProfile
+  edgeIds?: readonly string[]
 }
 
 function pointAlong(path: Array<{ x: number; y: number }>, progress: number) {
@@ -27,27 +33,56 @@ function pointAlong(path: Array<{ x: number; y: number }>, progress: number) {
   return path.at(-1)!
 }
 
-export function getRouteMiniMap(position: RoadPosition, profile: CentreRoadProfile = newmarketRoadProfile): MiniMapModel {
+function fitToMiniMap(paths: Array<Array<{ x: number; y: number }>>) {
+  const source = paths.flat()
+  const minX = Math.min(...source.map((point) => point.x))
+  const maxX = Math.max(...source.map((point) => point.x))
+  const minY = Math.min(...source.map((point) => point.y))
+  const maxY = Math.max(...source.map((point) => point.y))
+  const width = Math.max(1, maxX - minX)
+  const height = Math.max(1, maxY - minY)
+  const scale = Math.min(104 / width, 66 / height)
+  const renderedWidth = width * scale
+  const renderedHeight = height * scale
+  const offsetX = 63 - renderedWidth / 2
+  const offsetY = 44 - renderedHeight / 2
+  return (point: { x: number; y: number }) => ({
+    x: offsetX + (point.x - minX) * scale,
+    y: offsetY + (point.y - minY) * scale,
+  })
+}
+
+export function getRouteMiniMap(position: RoadPosition, options: MiniMapOptions = {}): MiniMapModel {
+  const profile = options.profile ?? newmarketRoadProfile
   const route = getRoute(profile, position.routeId)
-  const traversal = route.traversalEdgeIds.map((edgeId) => getEdge(profile, route.id, edgeId))
+  const fullTraversal = route.traversalEdgeIds.map((edgeId) => getEdge(profile, route.id, edgeId))
+  const requestedEdges = new Set(options.edgeIds ?? route.traversalEdgeIds)
+  const scopedTraversal = fullTraversal.filter((edge) => requestedEdges.has(edge.id))
+  const traversal = scopedTraversal.some((edge) => edge.id === position.edgeId) ? scopedTraversal : fullTraversal
   const currentEdgeIndex = Math.max(0, traversal.findIndex((edge) => edge.id === position.edgeId))
   const currentEdge = traversal[currentEdgeIndex]
   const currentSection = getSection(profile, currentEdge.sectionId)
   const progress = position.sMeters / currentSection.lengthM
-  const points = traversal.flatMap((edge, index) => index === 0 ? edge.miniMapPath : edge.miniMapPath.slice(1))
+  const firstFullIndex = fullTraversal.findIndex((edge) => edge.id === traversal[0].id)
+  const lastFullIndex = fullTraversal.findIndex((edge) => edge.id === traversal.at(-1)!.id)
+  const contextTraversal = fullTraversal.slice(Math.max(0, firstFullIndex - 1), Math.min(fullTraversal.length, lastFullIndex + 2))
+  const fit = fitToMiniMap(traversal.map((edge) => edge.miniMapPath))
+  const points = traversal.flatMap((edge, index) => (index === 0 ? edge.miniMapPath : edge.miniMapPath.slice(1))).map(fit)
+  const contextPoints = contextTraversal.flatMap((edge, index) => (index === 0 ? edge.miniMapPath : edge.miniMapPath.slice(1))).map(fit)
   const nodes = traversal.map((edge, index) => {
     const section = getSection(profile, edge.sectionId)
     return {
-      ...edge.miniMapPath[0],
+      ...fit(edge.miniMapPath[0]),
       state: index < currentEdgeIndex ? 'done' as const : index === currentEdgeIndex ? 'current' as const : 'upcoming' as const,
       label: section.trainingLabel,
     }
   })
-  nodes.push({ ...traversal.at(-1)!.miniMapPath.at(-1)!, state: 'upcoming', label: 'Teaching route finish' })
+  nodes.push({ ...fit(traversal.at(-1)!.miniMapPath.at(-1)!), state: 'upcoming', label: 'Teaching route finish' })
   return {
+    contextPoints,
     points,
     nodes,
-    vehicle: pointAlong(currentEdge.miniMapPath, progress),
+    vehicle: fit(pointAlong(currentEdge.miniMapPath, progress)),
     currentLabel: currentSection.trainingLabel,
     currentEdgeIndex,
     edgeCount: traversal.length,

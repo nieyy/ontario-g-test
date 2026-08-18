@@ -52,6 +52,18 @@ test('keeps a continuous road visible while crossing a section boundary', async 
   await captureRoadKeyframe(page, testInfo, 'local-to-signal-continuous-road')
 })
 
+test('scopes the mini-map to the selected scene and moves its vehicle marker', async ({ page }) => {
+  await openFocusedPractice(page, 'Freeway merge', '?debug=1&timeScale=1&startDistance=120&seed=111')
+  const map = page.locator('.route-progress-card').getByTestId('route-mini-map')
+  await expect(map).toHaveAttribute('data-map-scope', 'edge-ramp,edge-mainline')
+  const startX = await map.getAttribute('data-map-vehicle-x')
+  const startY = await map.getAttribute('data-map-vehicle-y')
+  await page.keyboard.down('ArrowUp')
+  await page.waitForTimeout(800)
+  await page.keyboard.up('ArrowUp')
+  await expect.poll(async () => `${await map.getAttribute('data-map-vehicle-x')},${await map.getAttribute('data-map-vehicle-y')}`).not.toBe(`${startX},${startY}`)
+})
+
 test('renders local, signal, ramp and exit sections as distinct keyframes', async ({ page }, testInfo) => {
   await openFocusedPractice(page, 'Right on red', '?debug=1&timeScale=1&startDistance=260&seed=102')
   await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'harry-walker-local')

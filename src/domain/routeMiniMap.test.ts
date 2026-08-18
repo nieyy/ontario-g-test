@@ -10,4 +10,12 @@ describe('route mini-map model', () => {
     expect(later.vehicle).not.toEqual(start.vehicle)
     expect(later.currentLabel).toContain('three-lane')
   })
+
+  it('crops and enlarges the map to the active scenario edges', () => {
+    const position = { routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-ramp', sectionId: 'highway-404-on-ramp', sMeters: 0, laneId: 'ramp-merge' }
+    const model = getRouteMiniMap(position, { edgeIds: ['edge-ramp', 'edge-mainline'] })
+    expect(model.edgeCount).toBe(2)
+    expect(model.currentEdgeIndex).toBe(0)
+    expect(Math.max(...model.points.map((point) => point.x)) - Math.min(...model.points.map((point) => point.x))).toBeGreaterThan(80)
+  })
 })

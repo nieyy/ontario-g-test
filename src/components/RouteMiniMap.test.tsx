@@ -14,8 +14,12 @@ describe('RouteMiniMap', () => {
 
   it('renders the RoadProfile route and current section when enabled', () => {
     const route = [newmarketCentre.variants['slow-lead'][0]]
-    render(<RouteMiniMap route={route} scenarioIndex={0} scenarioElapsed={20} roadPosition={{ routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-mainline', sectionId: 'highway-404-mainline', sMeters: 420, laneId: 'mainline-centre' }} />)
+    const { rerender } = render(<RouteMiniMap route={route} scenarioIndex={0} scenarioElapsed={20} roadPosition={{ routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-mainline', sectionId: 'highway-404-mainline', sMeters: 0, laneId: 'mainline-centre' }} />)
     expect(screen.getByLabelText(/Newmarket-inspired teaching route/i)).toHaveTextContent('Authored three-lane divided freeway')
     expect(screen.getAllByRole('img', { name: /not an official test route/i }).at(-1)).toBeInTheDocument()
+    const startX = screen.getByTestId('route-mini-map').getAttribute('data-map-vehicle-x')
+    rerender(<RouteMiniMap route={route} scenarioIndex={0} scenarioElapsed={20} roadPosition={{ routeId: 'newmarket-teaching-loop-v1', edgeId: 'edge-mainline', sectionId: 'highway-404-mainline', sMeters: 900, laneId: 'mainline-centre' }} />)
+    expect(screen.getByTestId('route-mini-map')).toHaveAttribute('data-map-scope', 'edge-mainline')
+    expect(screen.getByTestId('route-mini-map').getAttribute('data-map-vehicle-x')).not.toBe(startX)
   })
 })

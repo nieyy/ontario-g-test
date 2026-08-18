@@ -21,13 +21,23 @@ const schematicPoints = [
 
 export function RouteMiniMap({ route, scenarioIndex, scenarioElapsed, roadPosition }: Props) {
   if (roadPosition) {
-    const model = getRouteMiniMap(roadPosition)
+    const activeScenario = route[Math.min(scenarioIndex, route.length - 1)]
+    const scopeEdgeIds = activeScenario?.routeBinding.edgeIds
+    const model = getRouteMiniMap(roadPosition, { edgeIds: scopeEdgeIds })
     return (
-      <div className="route-mini-map" aria-label={`Newmarket-inspired teaching route. Current road: ${model.currentLabel}.`}>
+      <div
+        className="route-mini-map"
+        data-testid="route-mini-map"
+        data-map-edge={roadPosition.edgeId}
+        data-map-scope={scopeEdgeIds?.join(',')}
+        data-map-vehicle-x={model.vehicle.x.toFixed(2)}
+        data-map-vehicle-y={model.vehicle.y.toFixed(2)}
+        aria-label={`Newmarket-inspired teaching route. Current road: ${model.currentLabel}.`}
+      >
         <div><small>NEWMARKET-INSPIRED ROUTE</small><span aria-hidden="true">N ↑</span></div>
         <svg viewBox="0 0 126 88" role="img" aria-label="Schematic teaching route map; not an official test route">
-          <path className="map-street map-street-a" d="M 4 72 H 122 M 42 84 V 8 M 4 46 H 122 M 76 84 V 8 M 4 20 H 122" />
-          <polyline className="map-route" points={model.points.map((point) => `${point.x},${point.y}`).join(' ')} />
+          <polyline className="map-street" points={model.contextPoints.map((point) => `${point.x},${point.y}`).join(' ')} />
+          <polyline data-map-route className="map-route" points={model.points.map((point) => `${point.x},${point.y}`).join(' ')} />
           {model.nodes.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} className={`map-node ${point.state === 'upcoming' ? '' : point.state}`} cx={point.x} cy={point.y} r="3.2"><title>{point.label}</title></circle>)}
           <g className="map-vehicle" transform={`translate(${model.vehicle.x} ${model.vehicle.y})`}>
             <circle r="5.5" />
