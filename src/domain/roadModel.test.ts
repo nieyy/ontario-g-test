@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { newmarketRoadProfile, newmarketRouteBindings } from '../content/roadProfiles/newmarket'
 import { scenarioOrder } from '../content/data'
 import type { RouteBinding } from '../content/roadProfiles/types'
-import { advanceRoadPosition, canTurnFromRoad, createRoadPosition, getAvailableLaneActions, getRoadFacts, laneOffsetAt, requestAdjacentLane } from './roadModel'
+import { advanceRoadPosition, canTurnFromRoad, createRoadPosition, getAvailableLaneActions, getRoadFacts, laneEffectiveWidth, laneOffsetAt, requestAdjacentLane } from './roadModel'
 
 describe('dynamic road model', () => {
   function routeDistance(position: ReturnType<typeof createRoadPosition>, binding: RouteBinding) {
@@ -74,10 +74,14 @@ describe('dynamic road model', () => {
     const section = newmarketRoadProfile.sections.find((candidate) => candidate.id === 'highway-404-on-ramp')!
     const mergeLane = section.lanes.find((lane) => lane.id === 'ramp-merge')!
     const freewayRight = section.lanes.find((lane) => lane.id === 'ramp-mainline')!
-    for (const sMeters of [140, 220, 300, 360]) {
-      expect(laneOffsetAt(mergeLane, sMeters)).toBeGreaterThan(laneOffsetAt(freewayRight, sMeters))
+    for (const sMeters of [140, 220, 300, 360, 380, 400, 440, 479]) {
+      const mergeLeftEdge = laneOffsetAt(mergeLane, sMeters) - laneEffectiveWidth(section, mergeLane, sMeters) / 2
+      const freewayRightEdge = laneOffsetAt(freewayRight, sMeters) + laneEffectiveWidth(section, freewayRight, sMeters) / 2
+      expect(mergeLeftEdge, `ramp boundary at ${sMeters}m`).toBeGreaterThanOrEqual(freewayRightEdge - 0.001)
     }
-    expect(laneOffsetAt(mergeLane, 480)).toBe(laneOffsetAt(freewayRight, 480))
+    expect(laneOffsetAt(mergeLane, 480)).toBe(
+      laneOffsetAt(freewayRight, 480) + laneEffectiveWidth(section, freewayRight, 480) / 2,
+    )
   })
 
   it('keeps enough freeway mainline ahead for the complete timed merge scene', () => {
@@ -88,6 +92,21 @@ describe('dynamic road model', () => {
     expect(getRoadFacts(atMaximumDistance).speedLimitKph).toBe(100)
     expect(atMaximumDistance.sMeters).toBeGreaterThan(4_000)
     expect(atMaximumDistance.sMeters).toBeLessThan(getRoadFacts(atMaximumDistance).section.lengthM)
+  })
+
+  it('allows entering and leaving the visible freeway exit lane', () => {
+    const binding = newmarketRouteBindings['freeway-exit']
+    const start = createRoadPosition(binding, 'freeway-exit')
+    for (const sMeters of [220, 320, 500, 740]) {
+      const through = { ...start, sMeters }
+      const enter = requestAdjacentLane(through, 'right')
+      expect(enter.accepted, `enter exit lane at ${sMeters}m`).toBe(true)
+      if (!enter.accepted) continue
+      expect(enter.position.laneId).toBe('exit-ramp')
+      const leave = requestAdjacentLane(enter.position, 'left')
+      expect(leave.accepted, `leave exit lane at ${sMeters}m`).toBe(true)
+      if (leave.accepted) expect(leave.position.laneId).toBe('exit-right')
+    }
   })
 
   it('keeps physical road progress moving for every scenario after authored content ends', () => {

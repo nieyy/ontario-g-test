@@ -183,7 +183,8 @@ const sections: RoadSectionDefinition[] = [
           { sM: 180, centerOffsetM: 9.5 },
           { sM: 280, centerOffsetM: 8.2 },
           { sM: 360, centerOffsetM: 7.2 },
-          { sM: 480, centerOffsetM: 3.6 },
+          { sM: 380, centerOffsetM: 7.2 },
+          { sM: 480, centerOffsetM: 5.4 },
         ],
         left: 'dashed-white', right: 'solid-white', movements: ['merge'],
       }),
@@ -228,7 +229,7 @@ const sections: RoadSectionDefinition[] = [
     lanes: [
       lane({ id: 'exit-left', role: 'through', lengthM: 760, offsetM: -3.6, left: 'solid-white', right: 'dashed-white' }),
       lane({ id: 'exit-centre', role: 'through', lengthM: 760, offsetM: 0, left: 'dashed-white', right: 'dashed-white' }),
-      lane({ id: 'exit-right', role: 'through', lengthM: 760, offsetM: 3.6, left: 'dashed-white', right: 'solid-white' }),
+      lane({ id: 'exit-right', role: 'through', lengthM: 760, offsetM: 3.6, left: 'dashed-white', right: 'dashed-white' }),
       lane({ id: 'exit-ramp', role: 'exit', lengthM: 760, startsAtM: 210, offsetProfile: [{ sM: 210, centerOffsetM: 3.6 }, { sM: 320, centerOffsetM: 7.2 }, { sM: 760, centerOffsetM: 7.2 }], left: 'dashed-white', right: 'curb', movements: ['exit'] }),
     ],
     transitions: [{ id: 'exit-lane-split', atM: 210, taperLengthM: 110, kind: 'split', fromLaneIds: ['exit-right'], toLaneIds: ['exit-right', 'exit-ramp'] }],
@@ -278,7 +279,7 @@ const movements: RouteMovement[] = [
 export const newmarketRoadProfile: CentreRoadProfile = {
   id: 'newmarket-road-profile-v1',
   centreId: 'newmarket',
-  version: '1.1.3',
+  version: '1.1.4',
   displayName: 'Newmarket-inspired teaching corridor',
   disclaimer: 'Teaching approximation · not an official, recorded, guaranteed or predicted DriveTest route.',
   sourceNotices: [
@@ -296,7 +297,7 @@ export const newmarketRoadProfile: CentreRoadProfile = {
     movements,
     traversalEdgeIds: edges.map((edge) => edge.id),
   }],
-  contentHash: 'newmarket-road-profile-v1.1.3-authored-20260818',
+  contentHash: 'newmarket-road-profile-v1.1.4-authored-20260818',
 }
 
 export const newmarketRouteBindings = {

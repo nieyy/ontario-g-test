@@ -89,7 +89,12 @@ test('renders local, signal, ramp and exit sections as distinct keyframes', asyn
   await captureRoadKeyframe(page, testInfo, 'acceleration-lane-beside-mainline')
 
   await openFocusedPractice(page, 'Freeway exit', '?debug=1&timeScale=1&startDistance=260&seed=105')
-  await expect(page.getByTestId('road-world')).toHaveAttribute('data-road-section', 'highway-404-off-ramp')
+  const exitWorld = page.getByTestId('road-world')
+  await expect(exitWorld).toHaveAttribute('data-road-section', 'highway-404-off-ramp')
+  const enterExitLane = page.getByRole('button', { name: /Move one lane right/ })
+  await expect(enterExitLane).toBeEnabled()
+  await enterExitLane.click()
+  await expect.poll(async () => exitWorld.getAttribute('data-lane-id')).toBe('exit-ramp')
   await captureRoadKeyframe(page, testInfo, 'off-ramp-exit')
 })
 
